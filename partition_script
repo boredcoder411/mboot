@@ -1,0 +1,8 @@
+label: dos
+label-id: 0x82dc97ca
+device: image.img
+unit: sectors
+sector-size: 512
+
+image.img1 : start=        2048, size=          11, type=83, bootable
+image.img2 : start=        4096, size=       16384, type=83
