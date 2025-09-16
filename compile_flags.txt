@@ -1,0 +1,3 @@
+-m32
+-ffreestanding
+-Istage2/

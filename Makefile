@@ -1,6 +1,6 @@
 CC = x86_64-elf-gcc
 LD = x86_64-elf-ld
-CFLAGS = -m32 -ffreestanding -c
+CFLAGS = -m32 -ffreestanding -c -Istage2/
 LDFLAGS = -melf_i386 -o bootloader.bin -Ttext 0x1000 --oformat binary
 
 BUILD = build
@@ -14,8 +14,9 @@ $(BUILD):
 stage1: stage1/load_kernel.asm | $(BUILD)
 	nasm -f bin stage1/load_kernel.asm -o load_kernel.bin -D USE_GRAPHICS
 
-stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/vga.c stage2/io.c stage2/disk.c stage2/serial.c stage2/fs.c stage2/mbr.c | $(BUILD)
+stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/vga.c stage2/io.c stage2/disk.c stage2/serial.c stage2/fs.c stage2/mbr.c stage2/cpu/interrupts/idt.c | $(BUILD)
 	nasm -f elf stage2/start_loader.asm -o $(BUILD)/start_loader.o
+	nasm -f elf stage2/cpu/interrupts/idt.asm -o $(BUILD)/idt_s.o
 	
 	$(CC) $(CFLAGS) stage2/loader.c -o $(BUILD)/loader.o
 	$(CC) $(CFLAGS) stage2/utils.c -o $(BUILD)/utils.o
@@ -25,6 +26,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/vga.c stag
 	$(CC) $(CFLAGS) stage2/serial.c -o $(BUILD)/serial.o
 	$(CC) $(CFLAGS) stage2/fs.c -o $(BUILD)/fs.o
 	$(CC) $(CFLAGS) stage2/mbr.c -o $(BUILD)/mbr.o
+	$(CC) $(CFLAGS) stage2/cpu/interrupts/idt.c -o $(BUILD)/idt.o
 
 	$(LD) $(LDFLAGS) \
 		$(BUILD)/start_loader.o \
@@ -35,7 +37,9 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/vga.c stag
 		$(BUILD)/io.o \
 		$(BUILD)/disk.o \
 		$(BUILD)/fs.o \
-		$(BUILD)/mbr.o
+		$(BUILD)/mbr.o \
+		$(BUILD)/idt.o \
+		$(BUILD)/idt_s.o
 
 image: stage1 stage2 load_kernel.bin test.wad partition_script
 	@if [[ ! -f load_kernel.bin ]]; then \
