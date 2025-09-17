@@ -8,12 +8,16 @@
 #include "serial.h"
 #include "disk.h"
 #include "cpu/interrupts/idt.h"
+#include "cpu/interrupts/isr.h"
 #include "cpu/pic/pic.h"
+
+extern void div0_fault();
 
 void loader_start() {
   pic_mask_all();
   pic_remap();
   idt_init();
+  install_exception_isrs();
   asm("sti");
 
 	uint32_t lba = 0;
@@ -57,6 +61,8 @@ void loader_start() {
       put_pixel(x, y, y % 256);
     }
   }
+
+  div0_fault();
 
 	return;
 }
