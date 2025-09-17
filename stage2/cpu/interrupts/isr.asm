@@ -1,90 +1,61 @@
+; check https://wiki.osdev.org/Interrupts_Tutorial for source
 [bits 32]
-[global _isr0]
-[global _isr1]
-[global _isr2]
-[global _isr3]
-[global _isr4]
-[global _isr5]
-[global _isr6]
-[global _isr7]
-[global _isr8]
-[global _isr9]
-[global _isr10]
-[global _isr11]
-[global _isr12]
-[global _isr13]
-[global _isr14]
+
+%assign l 0
+%rep 32
+[global _isr%+l]
+%assign l l+1
+%endrep
+
 [global isr_common]
+[global isr_stub_table]
 [extern isr_handler]
 
-_isr0:
-  push 0
-  push 0
-  jmp isr_common
+%macro isr_err_stub 1
+_isr%+%1:
+    push %1
+    jmp isr_common
+%endmacro
 
-_isr1:
-  push 0
-  push 1
-  jmp isr_common
+%macro isr_no_err_stub 1
+_isr%+%1:
+    push 0
+    push %1
+    jmp isr_common
+%endmacro
 
-_isr2:
-  push 0
-  push 2
-  jmp isr_common
-
-_isr3:
-  push 0
-  push 3
-  jmp isr_common
-
-_isr4:
-  push 0
-  push 4
-  jmp isr_common
-
-_isr5:
-  push 0
-  push 5
-  jmp isr_common
-
-_isr6:
-  push 0
-  push 6
-  jmp isr_common
-
-_isr7:
-  push 0
-  push 7
-  jmp isr_common
-
-_isr8:
-  push 8
-  jmp isr_common
-
-_isr9:
-  push 0
-  push 9
-  jmp isr_common
-
-_isr10:
-  push 10
-  jmp isr_common
-
-_isr11:
-  push 11
-  jmp isr_common
-
-_isr12:
-  push 12
-  jmp isr_common
-
-_isr13:
-  push 13
-  jmp isr_common
-
-_isr14:
-  push 14
-  jmp isr_common
+isr_no_err_stub 0
+isr_no_err_stub 1
+isr_no_err_stub 2
+isr_no_err_stub 3
+isr_no_err_stub 4
+isr_no_err_stub 5
+isr_no_err_stub 6
+isr_no_err_stub 7
+isr_err_stub    8
+isr_no_err_stub 9
+isr_err_stub    10
+isr_err_stub    11
+isr_err_stub    12
+isr_err_stub    13
+isr_err_stub    14
+isr_no_err_stub 15
+isr_no_err_stub 16
+isr_err_stub    17
+isr_no_err_stub 18
+isr_no_err_stub 19
+isr_no_err_stub 20
+isr_no_err_stub 21
+isr_no_err_stub 22
+isr_no_err_stub 23
+isr_no_err_stub 24
+isr_no_err_stub 25
+isr_no_err_stub 26
+isr_no_err_stub 27
+isr_no_err_stub 28
+isr_no_err_stub 29
+isr_err_stub    30
+isr_no_err_stub 31
 
 isr_common:
     pusha
@@ -101,6 +72,12 @@ isr_common:
 
     pop ds
     popa
-    add esp, 8     ; remove fake error + int_no
+    add esp, 8
     iret
 
+isr_stub_table:
+%assign i 0
+%rep 32
+  dd _isr%+i
+%assign i i+1
+%endrep
