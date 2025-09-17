@@ -34,6 +34,8 @@ char *exceptions[32] = {
     "RESERVED",
     "RESERVED",
     "RESERVED",
+    "RESERVED",
+    "RESERVED",
     "RESERVED"
 };
 

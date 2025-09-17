@@ -9,15 +9,22 @@
 #include "disk.h"
 #include "cpu/interrupts/idt.h"
 #include "cpu/interrupts/isr.h"
+#include "cpu/interrupts/irq.h"
 #include "cpu/pic/pic.h"
 
 extern void div0_fault();
 
 void loader_start() {
-  pic_mask_all();
+  // mask all IRQs on the pic because they aren't set yet
+  for (int i = 0; i < 15; i++) {
+    pic_set_mask(i);
+  }
+
   pic_remap();
   idt_init();
   install_exception_isrs();
+  install_irq(1);
+  pic_clear_mask(1);
   asm("sti");
 
 	uint32_t lba = 0;
@@ -62,7 +69,8 @@ void loader_start() {
     }
   }
 
-  div0_fault();
+  //div0_fault();
+  //div0_fault();
 
-	return;
+  while (1);
 }

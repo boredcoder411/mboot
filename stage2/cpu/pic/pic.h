@@ -15,6 +15,7 @@
 #define ICW1_ICW4 0x01
 #define ICW1_INIT 0x10
 
-void pic_mask_all();
 void pic_clear_mask(size_t i);
+void pic_set_mask(size_t i);
 void pic_remap();
+void pic_send_eoi(size_t i);

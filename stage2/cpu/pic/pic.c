@@ -1,14 +1,15 @@
 #include "cpu/pic/pic.h"
 #include "io.h"
 
-void pic_mask_all() {
-  outb(PIC1_DATA, 0xFF);
-  outb(PIC2_DATA, 0xFF);
-}
-
 void pic_clear_mask(size_t i) {
   uint16_t port = i < 8 ? PIC1_DATA : PIC2_DATA;
   uint8_t value = inb(port) & ~(1 << i);
+    outb(port, value);
+}
+
+void pic_set_mask(size_t i) {
+  uint16_t port = i < 8 ? PIC1_DATA : PIC2_DATA;
+  uint8_t value = inb(port) | (1 << i);
     outb(port, value);
 }
 
@@ -24,4 +25,11 @@ void pic_remap() {
   outb(PIC1_DATA, PIC_MODE_8086);
   outb(PIC1_DATA, mask1);
   outb(PIC2_DATA, mask2);
+}
+
+void pic_send_eoi(size_t i) {
+  if (i >= 8) {
+    outb(PIC2, PIC_EOI);
+  }
+  outb(PIC1, PIC_EOI);
 }
