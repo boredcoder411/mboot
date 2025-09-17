@@ -1,6 +1,6 @@
 CC = x86_64-elf-gcc
 LD = x86_64-elf-ld
-CFLAGS = -m32 -ffreestanding -c -Istage2/
+CFLAGS = -m32 -ffreestanding -c -Istage2/ -Wall -Wextra -Werror -Os
 LDFLAGS = -melf_i386 -o bootloader.bin -Ttext 0x1000 --oformat binary
 
 BUILD = build

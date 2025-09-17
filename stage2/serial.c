@@ -20,11 +20,11 @@ int init_serial() {
 	return 0;
 }
 
-static int is_transmit_empty() {
+int is_transmit_empty() {
 	return inb(SERIAL_PORT + 5) & 0x20;
 }
 
-static void write_serial(char a) {
+void write_serial(char a) {
 	while(is_transmit_empty() == 0);
 	outb(SERIAL_PORT, a);
 }

@@ -6,11 +6,17 @@
 #include "serial.h"
 #include "cpu/pic/pic.h"
 
-void irq_handler(registers_t* r) {
-    serial_print("Interrupt: ");
-    serial_print(itoa(r->int_no));
+void irq_dispatcher(registers_t* r) {
+  serial_print("Interrupt: ");
+  serial_print(itoa(r->int_no));
+  serial_print("\n");
+  if (r->int_no == 0x21) {
+    uint8_t scancode = inb(0x60);
+    serial_print("Scancode: ");
+    serial_print(itoa(scancode));
     serial_print("\n");
-    pic_send_eoi(r->int_no);
+  }
+  pic_send_eoi(r->int_no);
 }
 
 void install_irq(size_t n) {

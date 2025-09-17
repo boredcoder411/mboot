@@ -9,12 +9,12 @@
 
 [global irq_common]
 [global irq_stub_table]
-[extern irq_handler]
+[extern irq_dispatcher]
 
 %macro irq_stub 1
 _irq%+%1:
     push 0
-    push %1
+    push %1+32
     jmp irq_common
 %endmacro
 
@@ -45,7 +45,7 @@ irq_common:
     mov gs, ax
 
     push esp
-    call irq_handler
+    call irq_dispatcher
     add esp, 4
 
     pop ds
