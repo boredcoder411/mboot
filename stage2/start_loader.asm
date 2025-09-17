@@ -1,6 +1,6 @@
 [bits 32]
 [extern loader_start]
-global div0_fault
+[global div0_fault]
 
 jmp loader_start
 jmp $
