@@ -23,7 +23,7 @@ void keyboard_handler(registers_t *r) {
 
 void loader_start() {
   // mask all IRQs on the pic because they aren't set yet
-  for (int i = 0; i < 15; i++) {
+  for (int i = 0; i < IRQs; i++) {
     pic_set_mask(i);
   }
 
@@ -68,6 +68,12 @@ void loader_start() {
   if (!lumps) {
     serial_print("No lumps found!\n");
     while (1);
+  }
+
+  for(uint32_t i = 0; i < wad->num_lumps; i++) {
+    serial_print("Lump: ");
+    serial_print(lumps[i].name);
+    serial_print("\n");
   }
 
   for (int x = 0; x < SCREEN_WIDTH; x++) {
