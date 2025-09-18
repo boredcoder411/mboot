@@ -29,7 +29,7 @@ void pic_remap() {
   outb(PIC2_DATA, 0x02);          // ICW3: tell Slave its cascade identity (0000 0010)
 
   outb(PIC1_DATA, PIC_MODE_8086); // ICW4: 8086/88 (MCS-80/85) mode
-  outb(PIC2_DATA, PIC_MODE_8086); // <-- MISSING before
+  outb(PIC2_DATA, PIC_MODE_8086);
 
   outb(PIC1_DATA, mask1);         // restore saved masks
   outb(PIC2_DATA, mask2);

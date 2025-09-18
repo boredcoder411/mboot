@@ -40,7 +40,7 @@ char *exceptions[32] = {
 };
 
 void isr_handler(registers_t* r) {
-    serial_print("Interrupt: ");
+    serial_print("exception: ");
     serial_print(itoa(r->int_no));
     serial_print("\n");
 

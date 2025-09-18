@@ -1,5 +1,4 @@
 #include <stdint.h>
-#include <stddef.h>
 #include <stdbool.h>
 #include "mbr.h"
 #include "fs.h"
@@ -14,6 +13,14 @@
 
 extern void div0_fault();
 
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+void keyboard_handler(registers_t *r) {
+  uint8_t scancode = inb(0x60);
+  serial_print("keyboard: ");
+  serial_print(itoa(scancode));
+  serial_print("\n");
+}
+
 void loader_start() {
   // mask all IRQs on the pic because they aren't set yet
   for (int i = 0; i < 15; i++) {
@@ -23,7 +30,7 @@ void loader_start() {
   pic_remap();
   idt_init();
   install_exception_isrs();
-  install_irq(1);
+  install_irq(1, keyboard_handler);
   pic_clear_mask(1);
   asm("sti");
 
