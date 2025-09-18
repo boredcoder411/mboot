@@ -70,9 +70,12 @@ image: stage1 stage2 load_kernel.bin test.wad partition_script
 	sudo losetup -d $$LOOP_DEV
 	@echo "Disk image created! Use xxd $(IMAGE) | less to inspect"
 
+wad_tool: wad_tool.c | $(BUILD)
+	gcc -o $(BUILD)/wad_tool wad_tool.c -Istage2/
+
 clean:
 	rm -rf $(BUILD)
 	rm -f *.bin
 	rm -f $(IMAGE)
 
-.PHONY: all clean stage1 stage2 image
+.PHONY: all clean stage1 stage2 image wad_tool
