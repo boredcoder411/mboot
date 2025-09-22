@@ -1,13 +1,12 @@
 #include <stdint.h>
 #include <stdbool.h>
-#include "utils.h"
-#include "vga.h"
-#include "serial.h"
+#include "dev/vga.h"
 #include "cpu/interrupts/idt.h"
 #include "cpu/interrupts/isr.h"
 #include "cpu/interrupts/irq.h"
 #include "cpu/pic/pic.h"
 #include "cpu/pit/pit.h"
+#include "dev/keyboard.h"
 
 extern void enable_fpu();
 
@@ -111,14 +110,6 @@ void draw_cube() {
 }
 
 #pragma GCC diagnostic ignored "-Wunused-parameter"
-void keyboard_handler(registers_t *r) {
-  uint8_t scancode = inb(0x60);
-  serial_print("keyboard: ");
-  serial_print(itoa(scancode));
-  serial_print("\n");
-}
-
-#pragma GCC diagnostic ignored "-Wunused-parameter"
 void pit_handler(registers_t *r) {
   draw_cube();
 }
@@ -135,8 +126,7 @@ void loader_start() {
   install_irq(0, pit_handler);
   pic_clear_mask(0);
   enable_fpu();
-  install_irq(1, keyboard_handler);
-  pic_clear_mask(1);
+  install_keyboard();
   asm("sti");
 
   for (int x = 0; x < SCREEN_WIDTH; x++) {

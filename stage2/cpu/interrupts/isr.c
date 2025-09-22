@@ -1,7 +1,7 @@
 #include "isr.h"
 #include "idt.h"
 #include "io.h"
-#include "serial.h"
+#include "dev/serial.h"
 #include "utils.h"
 
 char *exceptions[32] = {

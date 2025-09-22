@@ -1,5 +1,5 @@
 #include "utils.h"
-#include "serial.h"
+#include "dev/serial.h"
 
 char* itoa(int val) {
   static char buf[32] = {0};

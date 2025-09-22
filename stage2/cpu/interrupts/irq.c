@@ -3,7 +3,7 @@
 #include "isr.h"
 #include "io.h"
 #include "utils.h"
-#include "serial.h"
+#include "dev/serial.h"
 #include "cpu/pic/pic.h"
 
 void (*irq_handlers[IRQs])(registers_t *regs) = {0};
