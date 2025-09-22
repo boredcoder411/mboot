@@ -9,41 +9,22 @@
 #include "cpu/pic/pic.h"
 #include "cpu/pit/pit.h"
 
-typedef struct {
-  int x;
-  int y;
-} __attribute__((packed)) Vec2;
+extern void enable_fpu();
+extern void div0_fault();
 
-Vec2 square_pos = { SCREEN_WIDTH / 2 - 10, SCREEN_HEIGHT / 2 - 10 };
-Vec2 square_speed = { 1, 1 };
+// taylor of sin(x)
+float sin(float x) {
+  float x3 = x * x * x;
+  float x5 = x3 * x * x;
+  float x7 = x5 * x * x;
+  float ret = x - (x3 / 6) + (x5 / 120) - (x7 / 5040);
+  return ret;
+}
 
-void draw_square() {
-  for (int x = 0; x < 20; x++) {
-    for (int y = 0; y < 20; y++) {
-      put_pixel(square_pos.x + x, square_pos.y + y, 15);
-    }
-  }
-
-  for (int x = 0; x < 20; x++) {
-    for (int y = 0; y < 20; y++) {
-      put_pixel(square_pos.x + x, square_pos.y + y, 0);
-    }
-  }
-
-  square_pos.x += square_speed.x;
-  square_pos.y += square_speed.y;
-
-  if (square_pos.x <= 0 || square_pos.x >= SCREEN_WIDTH - 20) {
-    square_speed.x = -square_speed.x;
-  }
-  if (square_pos.y <= 0 || square_pos.y >= SCREEN_HEIGHT - 20) {
-    square_speed.y = -square_speed.y;
-  }
-
-  for (int x = 0; x < 20; x++) {
-    for (int y = 0; y < 20; y++) {
-      put_pixel(square_pos.x + x, square_pos.y + y, 15);
-    }
+void sin_demo() {
+  for (int x = 0; x < SCREEN_WIDTH; x++) {
+    int y = (SCREEN_HEIGHT / 2) + (int)(20 * sin((float)x / 10.0f));
+    put_pixel(x, y, 15);
   }
 }
 
@@ -57,7 +38,7 @@ void keyboard_handler(registers_t *r) {
 
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 void pit_handler(registers_t *r) {
-  draw_square();
+  sin_demo();
 }
 
 void loader_start() {
@@ -72,6 +53,7 @@ void loader_start() {
   pit_init();
   install_irq(0, pit_handler);
   pic_clear_mask(0);
+  enable_fpu();
   install_irq(1, keyboard_handler);
   pic_clear_mask(1);
   asm("sti");
