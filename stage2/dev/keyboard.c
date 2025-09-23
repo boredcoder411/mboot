@@ -8,7 +8,7 @@
 void keyboard_handler(registers_t *r) {
   uint8_t scancode = inb(0x60);
   serial_print("keyboard: ");
-  serial_print(itoa(scancode));
+  serial_print(int_to_str(scancode));
   serial_print("\n");
 }
 

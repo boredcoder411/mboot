@@ -14,7 +14,7 @@ $(BUILD):
 stage1: stage1/load_kernel.asm | $(BUILD)
 	nasm -f bin stage1/load_kernel.asm -o load_kernel.bin -D USE_GRAPHICS
 
-stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c stage2/io.c stage2/dev/disk.c stage2/dev/serial.c stage2/fs.c stage2/mbr.c stage2/cpu/interrupts/idt.c stage2/cpu/interrupts/isr.asm stage2/cpu/interrupts/isr.c stage2/cpu/interrupts/irq.c stage2/cpu/interrupts/irq.asm stage2/cpu/pic/pic.c stage2/cpu/pit/pit.c stage2/dev/keyboard.c | $(BUILD)
+stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c stage2/io.c stage2/dev/disk.c stage2/dev/serial.c stage2/fs.c stage2/mbr.c stage2/cpu/interrupts/idt.c stage2/cpu/interrupts/isr.asm stage2/cpu/interrupts/isr.c stage2/cpu/interrupts/irq.c stage2/cpu/interrupts/irq.asm stage2/cpu/pic/pic.c stage2/cpu/pit/pit.c stage2/dev/keyboard.c stage2/mem.c | $(BUILD)
 	nasm -f elf stage2/start_loader.asm -o $(BUILD)/start_loader.o
 	nasm -f elf stage2/cpu/interrupts/idt.asm -o $(BUILD)/idt_s.o
 	nasm -f elf stage2/cpu/interrupts/isr.asm -o $(BUILD)/isr_s.o
@@ -34,6 +34,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 	$(CC) $(CFLAGS) stage2/cpu/pic/pic.c -o $(BUILD)/pic.o
 	$(CC) $(CFLAGS) stage2/cpu/pit/pit.c -o $(BUILD)/pit.o
 	$(CC) $(CFLAGS) stage2/dev/keyboard.c -o $(BUILD)/keyboard.o
+	$(CC) $(CFLAGS) stage2/mem.c -o $(BUILD)/mem.o
 
 	$(LD) $(LDFLAGS) \
 		$(BUILD)/start_loader.o \
@@ -53,7 +54,8 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 		$(BUILD)/irq_s.o \
 		$(BUILD)/pic.o \
 		$(BUILD)/pit.o \
-		$(BUILD)/keyboard.o
+		$(BUILD)/keyboard.o \
+		$(BUILD)/mem.o
 
 image: stage1 stage2 load_kernel.bin test.wad partition_script
 	@if [[ ! -f load_kernel.bin ]]; then \

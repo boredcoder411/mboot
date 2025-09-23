@@ -41,19 +41,19 @@ char *exceptions[32] = {
 
 void isr_handler(registers_t* r) {
     serial_print("exception: ");
-    serial_print(itoa(r->int_no));
+    serial_print(int_to_str(r->int_no));
     serial_print("\n");
 
     serial_print(" CS=");
-    serial_print(itoa(r->cs));
+    serial_print(int_to_str(r->cs));
     serial_print("\n");
 
     serial_print(" EIP=");
-    serial_print(itoa(r->eip));
+    serial_print(int_to_str(r->eip));
     serial_print("\n");
 
     serial_print(" Error code=");
-    serial_print(itoa(r->err_code));
+    serial_print(int_to_str(r->err_code));
     serial_print("\n");
 
     serial_print(" Exception message: ");

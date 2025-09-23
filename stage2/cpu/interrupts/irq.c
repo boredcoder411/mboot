@@ -11,7 +11,7 @@ void (*irq_handlers[IRQs])(registers_t *regs) = {0};
 void irq_dispatcher(registers_t* r) {
   asm("cli");
   serial_print("irq: ");
-  serial_print(itoa(r->int_no));
+  serial_print(int_to_str(r->int_no));
   serial_print("\n");
   irq_handlers[r->int_no - EXCEPTION_ISRS](r);
   pic_send_eoi(r->int_no);
