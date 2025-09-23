@@ -141,11 +141,12 @@ void loader_start() {
   e820_entry_t* mem_map = (e820_entry_t*)0x9000;
   uint16_t entry_count = (*(uint16_t*)0x8E00);
 
-  dump_mmap(entry_count, mem_map);
-  check_overlaps(entry_count, mem_map);
-  uint64_t size = calculate_total_size(entry_count, mem_map);
-  print_float(bytes_to_gb(size));
-  serial_print(" GB detected...\n");
+  init_alloc(entry_count, mem_map);
+
+  uint32_t page1 = alloc_pages(1);
+  serial_print("Kernel allocator returned: ");
+  serial_print(uint_to_hex(page1));
+  serial_print("\n");
 
   while (1);
 }
