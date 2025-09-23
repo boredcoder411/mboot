@@ -37,3 +37,9 @@ This is by far not finished, there is a simple demo in ```loader.c``` of a 3d re
 - [x] the mbr partitioning scheme
 - [x] wad files as the filesystem
 - [x] enable x87 fpu
+- [ ] better filesystem
+- [ ] memory allocator
+- [ ] scheduler
+- [ ] elf loader
+- [ ] syscalls
+- [ ] libc
