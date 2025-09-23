@@ -14,10 +14,39 @@ call init_video_text
 %endif
 
 call load_kernel
+jmp bootsector_memory
 
-call switch_to_pm
+detect_memory:
+    xor ebx, ebx            ; Start with EBX = 0
+    mov edi, E820_MAP_ADDR  ; Buffer to store entries
+    mov word [E820_COUNT_ADDR], 0 ; Initialize entry count to 0
 
-jmp $
+.loop:
+    mov eax, 0xE820         ; E820 function
+    mov edx, 0x534D4150     ; 'SMAP' signature
+    mov ecx, 24             ; Request 24 bytes for the entry
+    mov dword [edi + 20], 1 ; Force ACPI 3.0 extended entry type
+    int 0x15                ; Call BIOS
+    jc .error               ; If carry is set, there was an error
+
+    cmp eax, 0x534D4150     ; Check for 'SMAP' signature on return
+    jne .error
+
+    test ebx, ebx           ; If EBX is 0, we are done
+    jz .done
+
+    inc word [E820_COUNT_ADDR] ; Increment entry count
+    add edi, 24             ; Move to the next 24-byte entry slot
+    jmp .loop
+
+.done:
+    ret
+
+.error:
+	mov ah, 0x0e
+	mov al, 'E'
+	int 0x10
+    jmp $
 
 %include "stage1/utils.inc"
 %include "stage1/gdt.asm"
@@ -62,6 +91,16 @@ disk_load:
 	popa
 
 	ret
+
+[bits 16]
+bootsector_memory:
+    ; Address to store the E820 map and its entry count
+    E820_MAP_ADDR equ 0x9000
+    E820_COUNT_ADDR equ 0x8E00
+
+    call detect_memory
+	call switch_to_pm
+	jmp $
 
 [bits 32]
 init_pm:

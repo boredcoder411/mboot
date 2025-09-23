@@ -7,6 +7,8 @@
 #include "cpu/pic/pic.h"
 #include "cpu/pit/pit.h"
 #include "dev/keyboard.h"
+#include "utils.h"
+#include "dev/serial.h"
 
 extern void enable_fpu();
 
@@ -114,6 +116,59 @@ void pit_handler(registers_t *r) {
   draw_cube();
 }
 
+typedef struct __attribute__((packed)) {
+    uint64_t base;
+    uint64_t length;
+    uint32_t type;
+    uint32_t acpi_extended_attributes;
+} e820_entry_t;
+
+void check_overlaps(uint16_t count, e820_entry_t* entries) {
+  int overlap_count = 0;
+  for (uint16_t i = 0; i < count; i++) {
+    e820_entry_t* a = &entries[i];
+    uint64_t a_start = a->base;
+    uint64_t a_end = a->base + a->length;
+
+    for (uint16_t j = i + 1; j < count; j++) {
+      e820_entry_t* b = &entries[j];
+      uint64_t b_start = b->base;
+      uint64_t b_end = b->base + b->length;
+
+      if ((a_start < b_end) && (b_start < a_end)) {
+        overlap_count++;
+        serial_print("Overlap detected between entries ");
+        serial_print(itoa(i));
+        serial_print(" and ");
+        serial_print(itoa(j));
+        serial_print("\n");
+      }
+    }
+  }
+
+  if (overlap_count == 0) {
+    serial_print("No overlaps detected in memory map.\n");
+  } else {
+    serial_print(itoa(overlap_count));
+    serial_print(" overlaps detected in memory map.\n");
+  }
+}
+
+void dump_mmap(uint16_t count, e820_entry_t* entries) {
+  for (uint16_t i = 0; i < count; i++) {
+    e820_entry_t* entry = &entries[i];
+    serial_print("Base: ");
+    serial_print(hextoa((int)(entry->base >> 32)));
+    serial_print(hextoa((int)(entry->base & 0xFFFFFFFF)));
+    serial_print(", Length: ");
+    serial_print(hextoa((int)(entry->length >> 32)));
+    serial_print(hextoa((int)(entry->length & 0xFFFFFFFF)));
+    serial_print(", Type: ");
+    serial_print(itoa(entry->type));
+    serial_print("\n");
+  }
+}
+
 void loader_start() {
   for (int i = 0; i < IRQs; i++) {
     pic_set_mask(i);
@@ -134,6 +189,12 @@ void loader_start() {
       put_pixel(x, y, 0);
     }
   }
+
+  e820_entry_t* mem_map = (e820_entry_t*)0x9000;
+  uint16_t entry_count = (*(uint16_t*)0x8E00);
+
+  dump_mmap(entry_count, mem_map);
+  check_overlaps(entry_count, mem_map);
 
   while (1);
 }
