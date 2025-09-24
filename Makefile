@@ -1,7 +1,8 @@
 CC = x86_64-elf-gcc
 LD = x86_64-elf-ld
-CFLAGS = -m32 -ffreestanding -c -Istage2/ -Wall -Wextra -Werror -Os
-LDFLAGS = -melf_i386 -o bootloader.bin -Ttext 0x1000 --oformat binary
+OBJCOPY = x86_64-elf-objcopy
+CFLAGS = -m32 -ffreestanding -c -Istage2/ -Wall -Wextra -Werror -g
+LDFLAGS = -melf_i386 -o kernel.elf -Ttext 0x1000
 
 BUILD = build
 IMAGE = image.img
@@ -56,6 +57,9 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 		$(BUILD)/pit.o \
 		$(BUILD)/keyboard.o \
 		$(BUILD)/mem.o
+	
+	$(OBJCOPY) --only-keep-debug kernel.elf kernel.sym
+	$(OBJCOPY) -O binary kernel.elf kernel.bin
 
 image: stage1 stage2 load_kernel.bin test.wad partition_script
 	@if [[ ! -f load_kernel.bin ]]; then \

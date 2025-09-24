@@ -139,6 +139,6 @@ dw 0xaa55
 NUM_STAGE2_SECTORS equ (stage2_end-stage2_start+511) / 512
 
 stage2_start:
-	incbin "bootloader.bin"
+	incbin "kernel.bin"
 
 stage2_end:
