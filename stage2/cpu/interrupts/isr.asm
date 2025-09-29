@@ -24,6 +24,26 @@ _isr%+%1:
     jmp isr_common
 %endmacro
 
+%macro pusha_c 0
+    push eax
+    push ebx
+    push ecx
+    push edx
+    push ebp
+    push esi
+    push edi
+%endmacro
+
+%macro popa_c 0
+    pop edi
+    pop esi
+    pop ebp
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
+%endmacro
+
 isr_no_err_stub 0
 isr_no_err_stub 1
 isr_no_err_stub 2
@@ -58,8 +78,7 @@ isr_err_stub    30
 isr_no_err_stub 31
 
 isr_common:
-    pusha
-    push ds
+    pusha_c
     mov ax, 0x10
     mov ds, ax
     mov es, ax
@@ -70,8 +89,7 @@ isr_common:
     call isr_handler
     add esp, 4
 
-    pop ds
-    popa
+    popa_c
     add esp, 8
     iret
 

@@ -18,6 +18,26 @@ _irq%+%1:
     jmp irq_common
 %endmacro
 
+%macro pusha_c 0
+    push eax
+    push ebx
+    push ecx
+    push edx
+    push ebp
+    push esi
+    push edi
+%endmacro
+
+%macro popa_c 0
+    pop edi
+    pop esi
+    pop ebp
+    pop edx
+    pop ecx
+    pop ebx
+    pop eax
+%endmacro
+
 irq_stub 0
 irq_stub 1
 irq_stub 2
@@ -36,8 +56,7 @@ irq_stub 14
 irq_stub 15
 
 irq_common:
-    pusha
-    push ds
+    pusha_c
     mov ax, 0x10
     mov ds, ax
     mov es, ax
@@ -48,8 +67,7 @@ irq_common:
     call irq_dispatcher
     add esp, 4
 
-    pop ds
-    popa
+    popa_c
     add esp, 8
     iret
 
