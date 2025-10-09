@@ -7,11 +7,9 @@ mov [BOOT_DISK], dl
 mov bp, 0x7c00
 mov sp, bp
 
-%ifdef USE_GRAPHICS
-call init_video_graphics
-%else
-call init_video_text
-%endif
+mov ah, 0x00
+mov al, 0x13
+int 0x10
 
 call load_kernel
 jmp bootsector_memory
@@ -48,9 +46,7 @@ detect_memory:
 	int 0x10
     jmp $
 
-%include "stage1/utils.inc"
 %include "stage1/gdt.asm"
-%include "stage1/video.asm"
 
 [bits 16]
 load_kernel:
@@ -63,7 +59,9 @@ load_kernel:
 [bits 16]
 switch_to_pm:
 	cli
-	enable_a20
+	in al, 0x92
+	or al, 2
+	out 0x92, al
 	lgdt [gdt_descriptor]
 
 	mov eax, cr0

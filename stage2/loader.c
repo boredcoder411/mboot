@@ -1,13 +1,10 @@
 #include "cpu/interrupts/idt.h"
-#include "cpu/interrupts/irq.h"
 #include "cpu/interrupts/isr.h"
 #include "cpu/pic/pic.h"
 #include "cpu/pit/pit.h"
 #include "dev/keyboard.h"
-#include "dev/serial.h"
 #include "dev/vga.h"
 #include "mem.h"
-#include "utils.h"
 #include <stdbool.h>
 #include <stdint.h>
 

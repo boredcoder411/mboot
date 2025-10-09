@@ -1,10 +1,12 @@
 [bits 32]
 [extern loader_start]
+[global _start]
 [global div0_fault]
 [global enable_fpu]
 
-jmp loader_start
-jmp $
+_start:
+  jmp loader_start
+  jmp $
 
 enable_fpu:
   fninit

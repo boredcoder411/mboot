@@ -1,10 +1,9 @@
-# kmint
-kmint was supposed to only be a kernel for my computer science final, but I'll make it a full os eventually.
+# mboot
+mboot is a bootloader for i386 platforms.
 
 ## Prequisites
 Building kmint depends on:
- - x86_64-elf-gcc
- - x86_64-elf-ld (provided by x86_64-elf-binutils on brew.sh)
+ - llvm tools (clang, ld.lld)
  - sfdisk
  - nasm
  - partprobe
@@ -22,7 +21,7 @@ qemu-system-x86_64 -m 4G -drive file=image.img -serial stdio
 ```
 
 ## Note
-This is by far not finished, there is a simple demo in ```loader.c``` of a 3d renderer displaying a rotating cube on the vga output
+As filesystems and elf files aren't implemented yet, programs you want to launch from mboot need to be linked into it and called from `loader.c`
 
 ## todo:
 - [x] 32 bit protected mode
@@ -39,7 +38,6 @@ This is by far not finished, there is a simple demo in ```loader.c``` of a 3d re
 - [x] enable x87 fpu
 - [ ] better filesystem
 - [ ] memory allocator
-- [ ] scheduler
 - [ ] elf loader
-- [ ] syscalls
+- [ ] paging
 - [ ] libc
