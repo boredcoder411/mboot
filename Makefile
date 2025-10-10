@@ -59,7 +59,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 	$(OBJCOPY) --only-keep-debug kernel.elf kernel.sym
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
 
-image: stage1 stage2 boot.bin test.wad partition_script
+image: stage1 stage2 boot.bin test.wad mkimg
 	@if [[ ! -f boot.bin ]]; then \
 		echo "Error: boot.bin not found."; \
 		exit 1; \
@@ -70,8 +70,7 @@ image: stage1 stage2 boot.bin test.wad partition_script
 	fi
 	dd if=/dev/zero of=$(IMAGE) bs=1M count=10
 	dd if=boot.bin of=$(IMAGE) conv=notrunc
-	sfdisk $(IMAGE) < partition_script
-	dd if=boot.bin of=$(IMAGE) bs=446 count=1 conv=notrunc
+	./$(BUILD)/mkimg $(IMAGE)
 	LOOP_DEV=$$(sudo losetup --find --show $(IMAGE)); \
 	sudo partprobe $$LOOP_DEV; \
 	sudo dd if=test.wad of=$${LOOP_DEV}p2; \
@@ -80,6 +79,9 @@ image: stage1 stage2 boot.bin test.wad partition_script
 
 wad_tool: tools/wad_tool.c | $(BUILD)
 	gcc -o $(BUILD)/wad_tool tools/wad_tool.c -Istage2/
+
+mkimg: tools/mkimg.c | $(BUILD)
+	gcc -o $(BUILD)/mkimg tools/mkimg.c -Istage2/
 
 clean:
 	rm -rf $(BUILD)
