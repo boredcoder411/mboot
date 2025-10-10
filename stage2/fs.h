@@ -2,6 +2,16 @@
 
 #include <stdint.h>
 
+typedef enum {
+  WAD_IWAD,
+  WAD_PWAD
+} wad_type_t;
+
+static const char wad_type_names[2][4] = {
+    { 'I', 'W', 'A', 'D' },
+    { 'P', 'W', 'A', 'D' }
+};
+
 typedef struct {
   char identifier[4];
   uint32_t num_lumps;
