@@ -59,29 +59,32 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 	$(OBJCOPY) --only-keep-debug kernel.elf kernel.sym
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
 
-image: stage1 stage2 boot.bin test.wad mkimg
+image: stage1 stage2 boot.bin assets.wad mkpart
 	@if [[ ! -f boot.bin ]]; then \
 		echo "Error: boot.bin not found."; \
 		exit 1; \
 	fi
-	@if [[ ! -f test.wad ]]; then \
-		echo "Error: test.wad not found."; \
+	@if [[ ! -f assets.wad ]]; then \
+		echo "Error: assets.wad not found."; \
 		exit 1; \
 	fi
 	dd if=/dev/zero of=$(IMAGE) bs=1M count=10
 	dd if=boot.bin of=$(IMAGE) conv=notrunc
-	./$(BUILD)/mkimg $(IMAGE)
+	./$(BUILD)/mkpart $(IMAGE)
 	LOOP_DEV=$$(sudo losetup --find --show $(IMAGE)); \
 	sudo partprobe $$LOOP_DEV; \
-	sudo dd if=test.wad of=$${LOOP_DEV}p2; \
+	sudo dd if=assets.wad of=$${LOOP_DEV}p2; \
 	sudo losetup -d $$LOOP_DEV
 	@echo "Disk image created! Use xxd $(IMAGE) | less to inspect"
 
 wad_tool: tools/wad_tool.c | $(BUILD)
 	gcc -o $(BUILD)/wad_tool tools/wad_tool.c -Istage2/
 
-mkimg: tools/mkimg.c | $(BUILD)
-	gcc -o $(BUILD)/mkimg tools/mkimg.c -Istage2/
+mkpart: tools/mkpart.c | $(BUILD)
+	gcc -o $(BUILD)/mkpart tools/mkpart.c -Istage2/
+
+psf: tools/psf.c | $(BUILD)
+	gcc -o $(BUILD)/psf tools/psf.c -Istage2/ $$(pkg-config --cflags --libs libpng)
 
 clean:
 	rm -rf $(BUILD)
@@ -90,4 +93,4 @@ clean:
 	rm -f kernel.sym
 	rm -f kernel.elf
 
-.PHONY: all clean stage1 stage2 image wad_tool
+.PHONY: all clean stage1 stage2 image wad_tool mkpart psf
