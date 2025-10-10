@@ -70,7 +70,7 @@ image: stage1 stage2 boot.bin assets.wad mkpart
 	fi
 	dd if=/dev/zero of=$(IMAGE) bs=1M count=10
 	dd if=boot.bin of=$(IMAGE) conv=notrunc
-	./$(BUILD)/mkpart $(IMAGE)
+	$(BUILD)/mkpart $(IMAGE)
 	LOOP_DEV=$$(sudo losetup --find --show $(IMAGE)); \
 	sudo partprobe $$LOOP_DEV; \
 	sudo dd if=assets.wad of=$${LOOP_DEV}p2; \
@@ -86,6 +86,10 @@ mkpart: tools/mkpart.c | $(BUILD)
 psf: tools/psf.c | $(BUILD)
 	gcc -o $(BUILD)/psf tools/psf.c -Istage2/ $$(pkg-config --cflags --libs libpng)
 
+assets.wad: psf wad_tool | $(BUILD)
+	$(BUILD)/psf tools/font.png $(BUILD)/font.psf
+	$(BUILD)/wad_tool pack assets.wad IWAD $(BUILD)/font.psf
+
 clean:
 	rm -rf $(BUILD)
 	rm -f *.bin
@@ -93,4 +97,4 @@ clean:
 	rm -f kernel.sym
 	rm -f kernel.elf
 
-.PHONY: all clean stage1 stage2 image wad_tool mkpart psf
+.PHONY: all clean stage1 stage2 image wad_tool mkpart psf bundle
