@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
     mbr.partitions[1].status = 0x00;
     lba_to_chs(4096, heads, sectors, mbr.partitions[1].first_chs);
     lba_to_chs(4096 + 16384 - 1, heads, sectors, mbr.partitions[1].last_chs);
-    mbr.partitions[1].type = 0x83;
+    mbr.partitions[1].type = 0xEF;
     mbr.partitions[1].first_lba = 4096;
     mbr.partitions[1].sector_count = 16384;
 

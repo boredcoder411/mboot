@@ -59,7 +59,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 	$(OBJCOPY) --only-keep-debug kernel.elf kernel.sym
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
 
-image: stage1 stage2 boot.bin assets.wad mkpart
+image: stage1 stage2 boot.bin assets.wad mkpart wpart
 	@if [[ ! -f boot.bin ]]; then \
 		echo "Error: boot.bin not found."; \
 		exit 1; \
@@ -71,10 +71,7 @@ image: stage1 stage2 boot.bin assets.wad mkpart
 	dd if=/dev/zero of=$(IMAGE) bs=1M count=10
 	dd if=boot.bin of=$(IMAGE) conv=notrunc
 	$(BUILD)/mkpart $(IMAGE)
-	LOOP_DEV=$$(sudo losetup --find --show $(IMAGE)); \
-	sudo partprobe $$LOOP_DEV; \
-	sudo dd if=assets.wad of=$${LOOP_DEV}p2; \
-	sudo losetup -d $$LOOP_DEV
+	$(BUILD)/wpart $(IMAGE) 2 assets.wad
 	@echo "Disk image created! Use xxd $(IMAGE) | less to inspect"
 
 wad_tool: tools/wad_tool.c | $(BUILD)
@@ -85,6 +82,9 @@ mkpart: tools/mkpart.c | $(BUILD)
 
 psf: tools/psf.c | $(BUILD)
 	gcc -o $(BUILD)/psf tools/psf.c -Istage2/ $$(pkg-config --cflags --libs libpng)
+
+wpart: tools/wpart.c | $(BUILD)
+	gcc -o $(BUILD)/wpart tools/wpart.c -Istage2/
 
 assets.wad: psf wad_tool | $(BUILD)
 	$(BUILD)/psf tools/font.png $(BUILD)/font.psf
@@ -97,4 +97,4 @@ clean:
 	rm -f kernel.sym
 	rm -f kernel.elf
 
-.PHONY: all clean stage1 stage2 image wad_tool mkpart psf bundle
+.PHONY: all clean stage1 stage2 image wad_tool mkpart psf wpart
