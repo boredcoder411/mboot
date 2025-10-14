@@ -1,4 +1,4 @@
-#include "fs.h"
+#include "../stage2/fs.h"
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -98,7 +98,7 @@ int unpack_wad(const char *in_file) {
   lump_entry_t *entries = calloc(hdr->num_lumps, sizeof(lump_entry_t));
   fread(entries, sizeof(lump_entry_t), hdr->num_lumps, wad_fp);
 
-  for (int i = 0; i < hdr->num_lumps; i++) {
+  for (uint32_t i = 0; i < hdr->num_lumps; i++) {
     fseek(wad_fp, entries[i].offset, SEEK_SET);
     uint8_t *contents = malloc(entries[i].size);
 
