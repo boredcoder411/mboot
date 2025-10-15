@@ -61,7 +61,7 @@ void loader_start() {
     asm("cli;hlt");
   }
 
-    wad_header_t *wad = alloc_page();
+  wad_header_t *wad = alloc_page();
   ata_lba_read(mbr->partitions[found].first_lba, 3, wad, 0);
 
   lump_entry_t *entries = (lump_entry_t *)((uint8_t *)wad + wad->dir_offset);
@@ -82,11 +82,23 @@ void loader_start() {
     serial_print("invalid psf file\n");
     asm("cli;hlt");
   }
-
   uint8_t *glyphs = (uint8_t *)(psf + 1);
+
+  for (uint32_t i = 0; i < wad->num_lumps; i++) {
+    if (strncmp(entries[i].name, "test.txt", 8)) {
+      found = 1;
+    }
+  }
+
+  if (found == wad->num_lumps) {
+    serial_print("couldn't find \n");
+    asm("cli;hlt");
+  }
+
+  uint8_t *text_file = (uint8_t *)wad + entries[found].offset;
   int x = 0;
-  for (int i = 65; i < (65 + 26); i++) {
-    display_glyph(glyphs, i, x, 0, 15);
+  for (uint32_t i = 0; i < entries[found].size; i++) {
+    display_glyph(glyphs, text_file[i], x, 0, 15);
     x += 8;
   }
 

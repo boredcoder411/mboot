@@ -92,7 +92,7 @@ wpart: tools/wpart.c | $(BUILD)
 
 assets.wad: psf wad_tool | $(BUILD)
 	$(BUILD)/psf tools/font.png $(BUILD)/font.psf
-	$(BUILD)/wad_tool pack assets.wad IWAD $(BUILD)/font.psf
+	$(BUILD)/wad_tool pack assets.wad IWAD $(BUILD)/font.psf test.txt
 
 clean:
 	rm -rf $(BUILD)
