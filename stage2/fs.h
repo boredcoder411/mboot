@@ -2,15 +2,10 @@
 
 #include <stdint.h>
 
-typedef enum {
-  WAD_IWAD,
-  WAD_PWAD
-} wad_type_t;
+typedef enum { WAD_IWAD, WAD_PWAD } wad_type_t;
 
-static const char wad_type_names[2][4] = {
-    { 'I', 'W', 'A', 'D' },
-    { 'P', 'W', 'A', 'D' }
-};
+static const char wad_type_names[2][4] = {{'I', 'W', 'A', 'D'},
+                                          {'P', 'W', 'A', 'D'}};
 
 typedef struct {
   char identifier[4];
@@ -24,6 +19,6 @@ typedef struct {
   char name[8];
 } __attribute__((packed)) lump_entry_t;
 
-wad_header_t* init_wad(uint8_t* buffer);
-lump_entry_t* init_lumps(wad_header_t* wad);
+wad_header_t *init_wad(uint8_t *buffer);
+lump_entry_t *init_lumps(wad_header_t *wad);
 void *find_file(char name[8], wad_header_t *wad);

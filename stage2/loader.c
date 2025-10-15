@@ -1,6 +1,6 @@
 #include "cpu/interrupts/idt.h"
-#include "cpu/interrupts/isr.h"
 #include "cpu/interrupts/irq.h"
+#include "cpu/interrupts/isr.h"
 #include "cpu/pic/pic.h"
 #include "cpu/pit/pit.h"
 #include "dev/disk.h"
@@ -8,10 +8,10 @@
 #include "dev/serial.h"
 #include "dev/vga.h"
 #include "fs.h"
+#include "imf.h"
 #include "mbr.h"
 #include "mem.h"
 #include "psf.h"
-#include "imf.h"
 #include "utils.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -73,7 +73,7 @@ void loader_start() {
 
   x = 0;
   y = 8;
-  imf_t *imf_file = find_file("icon.imf", wad); 
+  imf_t *imf_file = find_file("icon.imf", wad);
   display_imf(imf_file, x, y);
 
   asm("sti");

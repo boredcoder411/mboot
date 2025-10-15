@@ -101,25 +101,25 @@ void *memcpy(void *dst, void *src, size_t n) {
   return dst;
 }
 
-void* alloc_page() {
-    static uint32_t next_paddr = 0;
+void *alloc_page() {
+  static uint32_t next_paddr = 0;
 
-    if (next_paddr == 0) {
-        // initialize only once
-        next_paddr = free_ram;
-    }
+  if (next_paddr == 0) {
+    // initialize only once
+    next_paddr = free_ram;
+  }
 
-    uint32_t paddr = next_paddr;
-    next_paddr += PAGE_SIZE;
+  uint32_t paddr = next_paddr;
+  next_paddr += PAGE_SIZE;
 
-    if (next_paddr > free_ram_end) {
-        serial_print("Out of memory :(\n");
-        asm("cli");
-        asm("hlt");
-    }
+  if (next_paddr > free_ram_end) {
+    serial_print("Out of memory :(\n");
+    asm("cli");
+    asm("hlt");
+  }
 
-    memset((void *)paddr, 0, PAGE_SIZE);
-    return (void *)paddr;
+  memset((void *)paddr, 0, PAGE_SIZE);
+  return (void *)paddr;
 }
 
 static block_header_t *free_list = NULL;

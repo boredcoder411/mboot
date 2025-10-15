@@ -98,6 +98,9 @@ assets.wad: psf wad_tool imf | $(BUILD)
 	$(BUILD)/imf test_files/icon.png $(BUILD)/icon.imf
 	$(BUILD)/wad_tool pack assets.wad IWAD $(BUILD)/font.psf $(BUILD)/icon.imf test_files/test.txt
 
+format:
+	@find stage2 tools -type f \( -name "*.c" -o -name "*.h" \) -exec clang-format -i {} +
+
 clean:
 	rm -rf $(BUILD)
 	rm -f *.bin
@@ -106,4 +109,4 @@ clean:
 	rm -f kernel.elf
 	rm -f assets.wad
 
-.PHONY: all clean stage1 stage2 image wad_tool mkpart psf wpart imf
+.PHONY: all clean stage1 stage2 image wad_tool mkpart psf wpart imf format

@@ -1,10 +1,10 @@
 #include "../stage2/fs.h"
 #include <errno.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 
 wad_type_t w_type_arg;
 
@@ -42,7 +42,7 @@ int pack_wad(const char *out_path, const char **in_files, const int num_in) {
 
   wad_header_t header;
   memcpy(header.identifier, wad_type_names[w_type_arg], 4);
-  header.num_lumps = (uint32_t) num_in;
+  header.num_lumps = (uint32_t)num_in;
   header.dir_offset = 0;
   fwrite(&header, sizeof(header), 1, out_fp);
 
@@ -94,7 +94,7 @@ int unpack_wad(const char *in_file) {
   fread(hdr, sizeof(wad_header_t), 1, wad_fp);
 
   fseek(wad_fp, hdr->dir_offset, SEEK_SET);
-  
+
   lump_entry_t *entries = calloc(hdr->num_lumps, sizeof(lump_entry_t));
   fread(entries, sizeof(lump_entry_t), hdr->num_lumps, wad_fp);
 
@@ -122,43 +122,47 @@ int unpack_wad(const char *in_file) {
 }
 
 int main(int argc, const char **argv) {
-    if (argc < 3) {
-        fprintf(stderr, "Usage: %s <pack|unpack> <wad file> [IWAD|PWAD] [extra files...]\n", argv[0]);
-        return 1;
+  if (argc < 3) {
+    fprintf(stderr,
+            "Usage: %s <pack|unpack> <wad file> [IWAD|PWAD] [extra files...]\n",
+            argv[0]);
+    return 1;
+  }
+
+  bool pack = strcmp(argv[1], "pack") == 0;
+  bool unpack = strcmp(argv[1], "unpack") == 0;
+
+  if (!pack && !unpack) {
+    fprintf(stderr, "Error: first argument must be 'pack' or 'unpack'\n");
+    return 1;
+  }
+
+  const char *wad_file = argv[2];
+
+  if (pack) {
+    if (argc < 5) {
+      fprintf(stderr,
+              "Usage for packing: %s pack <wad file> <IWAD|PWAD> <extra "
+              "files...>\n",
+              argv[0]);
+      return 1;
     }
 
-    bool pack = strcmp(argv[1], "pack") == 0;
-    bool unpack = strcmp(argv[1], "unpack") == 0;
-
-    if (!pack && !unpack) {
-        fprintf(stderr, "Error: first argument must be 'pack' or 'unpack'\n");
-        return 1;
-    }
-
-    const char *wad_file = argv[2];
-
-    if (pack) {
-        if (argc < 5) {
-            fprintf(stderr, "Usage for packing: %s pack <wad file> <IWAD|PWAD> <extra files...>\n", argv[0]);
-            return 1;
-        }
-
-        if (!strcmp(argv[3], "IWAD")) {
-            w_type_arg = WAD_IWAD;
-        } else if (!strcmp(argv[3], "PWAD")) {
-            w_type_arg = WAD_PWAD;
-        } else {
-            fprintf(stderr, "Error: third argument must be 'IWAD' or 'PWAD'\n");
-            return 1;
-        }
-
-        const char **source_files = &argv[4];
-        int num_source_files = argc - 4;
-
-        return pack_wad(wad_file, source_files, num_source_files);
-
+    if (!strcmp(argv[3], "IWAD")) {
+      w_type_arg = WAD_IWAD;
+    } else if (!strcmp(argv[3], "PWAD")) {
+      w_type_arg = WAD_PWAD;
     } else {
-        return unpack_wad(wad_file);
+      fprintf(stderr, "Error: third argument must be 'IWAD' or 'PWAD'\n");
+      return 1;
     }
-}
 
+    const char **source_files = &argv[4];
+    int num_source_files = argc - 4;
+
+    return pack_wad(wad_file, source_files, num_source_files);
+
+  } else {
+    return unpack_wad(wad_file);
+  }
+}

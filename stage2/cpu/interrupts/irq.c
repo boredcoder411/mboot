@@ -1,14 +1,14 @@
 #include "irq.h"
-#include "idt.h"
-#include "isr.h"
-#include "io.h"
-#include "utils.h"
-#include "dev/serial.h"
 #include "cpu/pic/pic.h"
+#include "dev/serial.h"
+#include "idt.h"
+#include "io.h"
+#include "isr.h"
+#include "utils.h"
 
 void (*irq_handlers[IRQs])(registers_t *regs) = {0};
 
-void irq_dispatcher(registers_t* r) {
+void irq_dispatcher(registers_t *r) {
   asm("cli");
   serial_print("irq: ");
   serial_print(int_to_str(r->int_no));
