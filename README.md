@@ -4,11 +4,7 @@ mboot is a bootloader for i386 platforms.
 ## Prequisites
 Building kmint depends on:
  - llvm tools (clang, ld.lld)
- - sfdisk
  - nasm
- - partprobe
-
-These requirements mean you can only fully build the disk image on Linux, I will swap out the missing tools for mac-friendly ones soon.
 
 Running kmint needs:
  - the building tools or a disk image
@@ -36,7 +32,6 @@ As filesystems and elf files aren't implemented yet, programs you want to launch
 - [x] the mbr partitioning scheme
 - [x] wad files as the filesystem
 - [x] enable x87 fpu
-- [ ] better filesystem
 - [ ] memory allocator
 - [ ] elf loader
 - [ ] paging

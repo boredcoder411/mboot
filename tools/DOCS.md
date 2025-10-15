@@ -22,3 +22,9 @@ usage: `
 `
 the input image file needs to be in png format, and psf assumes each glyph is 8x8 and the image file has 16x8 glyphs
 to build psf you need libpng to be installed
+
+## wpart
+wpart is a util that just dumps a given file to a partition in an mbr disk image
+usage: `
+./build/wpart <image file> <partition number> <input file>
+`
