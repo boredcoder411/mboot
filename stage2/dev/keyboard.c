@@ -1,7 +1,7 @@
 #include "keyboard.h"
 #include "dev/serial.h"
 #include "utils.h"
-#include "cpu/interrupts/isr.h"
+#include "cpu/interrupts/irq.h"
 #include "cpu/pic/pic.h"
 
 #pragma GCC diagnostic ignored "-Wunused-parameter"

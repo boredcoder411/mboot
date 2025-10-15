@@ -1,5 +1,6 @@
 #include "cpu/interrupts/idt.h"
 #include "cpu/interrupts/isr.h"
+#include "cpu/interrupts/irq.h"
 #include "cpu/pic/pic.h"
 #include "cpu/pit/pit.h"
 #include "dev/disk.h"
@@ -46,9 +47,9 @@ void loader_start() {
 
   init_alloc(entry_count, mem_map);
 
-  mbr_t *mbr = (mbr_t *)0x7c00;
+  mbr_t *mbr = (mbr_t *)0x7C00;
   uint32_t found = 0;
-  for (int i = 0; i < 4; i++) {
+  for (uint32_t i = 0; i < 4; i++) {
     if (mbr->partitions[i].type == 0xef) {
       found = i;
       break;
@@ -56,11 +57,11 @@ void loader_start() {
   }
 
   if (found == 4) {
-    serial_print("couldn't find a init fs\n");
+    serial_print("couldn't find second partition");
     asm("cli;hlt");
   }
 
-  wad_header_t *wad = alloc_page();
+    wad_header_t *wad = alloc_page();
   ata_lba_read(mbr->partitions[found].first_lba, 3, wad, 0);
 
   lump_entry_t *entries = (lump_entry_t *)((uint8_t *)wad + wad->dir_offset);
@@ -88,6 +89,8 @@ void loader_start() {
     display_glyph(glyphs, i, x, 0, 15);
     x += 8;
   }
+
+  asm("sti");
 
   while (1) {
   }
