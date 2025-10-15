@@ -90,9 +90,13 @@ psf: tools/psf.c | $(BUILD)
 wpart: tools/wpart.c | $(BUILD)
 	gcc -o $(BUILD)/wpart tools/wpart.c -Istage2/
 
-assets.wad: psf wad_tool | $(BUILD)
-	$(BUILD)/psf tools/font.png $(BUILD)/font.psf
-	$(BUILD)/wad_tool pack assets.wad IWAD $(BUILD)/font.psf test.txt
+imf: tools/imf.c | $(BUILD)
+	gcc -o $(BUILD)/imf tools/imf.c -Istage2/ $$(pkg-config --cflags --libs libpng)
+
+assets.wad: psf wad_tool imf | $(BUILD)
+	$(BUILD)/psf test_files/font.png $(BUILD)/font.psf
+	$(BUILD)/imf test_files/icon.png $(BUILD)/icon.imf
+	$(BUILD)/wad_tool pack assets.wad IWAD $(BUILD)/font.psf $(BUILD)/icon.imf test_files/test.txt
 
 clean:
 	rm -rf $(BUILD)
@@ -100,5 +104,6 @@ clean:
 	rm -f $(IMAGE)
 	rm -f kernel.sym
 	rm -f kernel.elf
+	rm -f assets.wad
 
-.PHONY: all clean stage1 stage2 image wad_tool mkpart psf wpart
+.PHONY: all clean stage1 stage2 image wad_tool mkpart psf wpart imf

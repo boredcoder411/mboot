@@ -11,22 +11,15 @@
 #include "mbr.h"
 #include "mem.h"
 #include "psf.h"
+#include "imf.h"
 #include "utils.h"
 #include <stdbool.h>
 #include <stdint.h>
 
 extern void enable_fpu();
 
-void display_glyph(uint8_t *glyphs, uint32_t glyph_index, int x, int y, uint8_t color) {
-    for (uint32_t row = 0; row < 8; row++) {
-        uint8_t row_byte = glyphs[glyph_index * 8 + row];
-        for (int bit = 7; bit >= 0; bit--) {
-            if (row_byte & (1 << bit)) {
-                put_pixel(x + (7 - bit), y + row, color);
-            }
-        }
-    }
-}
+int x = 0;
+int y = 0;
 
 void loader_start() {
   for (int i = 0; i < IRQs; i++) {
@@ -39,6 +32,7 @@ void loader_start() {
   pit_init();
   enable_fpu();
   install_keyboard();
+  remap_vga_dac();
 
   memset(VIDEO_MEMORY, 0, 320 * 200);
 
@@ -62,45 +56,25 @@ void loader_start() {
   }
 
   wad_header_t *wad = alloc_page();
-  ata_lba_read(mbr->partitions[found].first_lba, 3, wad, 0);
+  ata_lba_read(mbr->partitions[found].first_lba, 4, wad, 0);
 
-  lump_entry_t *entries = (lump_entry_t *)((uint8_t *)wad + wad->dir_offset);
-  for (uint32_t i = 0; i < wad->num_lumps; i++) {
-    if (strncmp(entries[i].name, "font.psf", 8)) {
-      found = i;
-      break;
-    }
-  }
-
-  if (found == wad->num_lumps) {
-    serial_print("couldn't find font\n");
-    asm("cli;hlt");
-  }
-
-  psf_header_t *psf = (psf_header_t *)((uint8_t *)wad + entries[found].offset);
+  psf_header_t *psf = find_file("font.psf", wad);
   if (psf->magic != PSF1_FONT_MAGIC) {
     serial_print("invalid psf file\n");
     asm("cli;hlt");
   }
   uint8_t *glyphs = (uint8_t *)(psf + 1);
 
-  for (uint32_t i = 0; i < wad->num_lumps; i++) {
-    if (strncmp(entries[i].name, "test.txt", 8)) {
-      found = 1;
-    }
-  }
-
-  if (found == wad->num_lumps) {
-    serial_print("couldn't find \n");
-    asm("cli;hlt");
-  }
-
-  uint8_t *text_file = (uint8_t *)wad + entries[found].offset;
-  int x = 0;
-  for (uint32_t i = 0; i < entries[found].size; i++) {
-    display_glyph(glyphs, text_file[i], x, 0, 15);
+  uint8_t *welcome = find_file("test.txt", wad);
+  for (uint32_t i = 0; welcome[i + 1] != '\0'; i++) {
+    display_glyph(glyphs, welcome[i], x, y, VGA_WHITE);
     x += 8;
   }
+
+  x = 0;
+  y = 8;
+  imf_t *imf_file = find_file("icon.imf", wad); 
+  display_imf(imf_file, x, y);
 
   asm("sti");
 

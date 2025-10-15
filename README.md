@@ -2,11 +2,11 @@
 mboot is a bootloader for i386 platforms.
 
 ## Prequisites
-Building kmint depends on:
+Building mboot depends on:
  - llvm tools (clang, ld.lld)
  - nasm
 
-Running kmint needs:
+Running mboot needs:
  - the building tools or a disk image
  - qemu-system-x86_64
 

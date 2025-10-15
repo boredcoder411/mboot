@@ -16,7 +16,7 @@ usage: `
 `
 
 ## psf
-psf is a util to take a png and make it into a .psf file, which is the font format kmint uses
+psf is a util to take a png and make it into a .psf file, which is the font format mboot uses
 usage: `
 ./build/psf <image file>
 `
@@ -28,3 +28,6 @@ wpart is a util that just dumps a given file to a partition in an mbr disk image
 usage: `
 ./build/wpart <image file> <partition number> <input file>
 `
+
+## imf
+imf is the tool to turn pngs into mboot's image format: imf. (its structure is defined in `stage2/imf.h`)

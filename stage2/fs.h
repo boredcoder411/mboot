@@ -26,3 +26,4 @@ typedef struct {
 
 wad_header_t* init_wad(uint8_t* buffer);
 lump_entry_t* init_lumps(wad_header_t* wad);
+void *find_file(char name[8], wad_header_t *wad);
