@@ -3,7 +3,7 @@ LD = ld.lld
 OBJCOPY = llvm-objcopy
 
 CFLAGS = -target i386-elf -ffreestanding -fno-pic -fno-pie -mno-red-zone \
-         -Wall -Wextra -Werror -g -c -Istage2/
+         -Wall -Wextra -Werror -g -c -Istage2/ -Os
 LDFLAGS = -m elf_i386 -T link.ld -nostdlib -static -o kernel.elf
 
 BUILD = build
