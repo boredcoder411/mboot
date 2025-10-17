@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static void vga_palette(uint8_t palette[256][3]) {
   int i = 0;
@@ -17,7 +18,6 @@ static void vga_palette(uint8_t palette[256][3]) {
       }
     }
   }
-
   for (int g = 0; i < 256; i++, g++) {
     uint8_t v = (g * 255) / 17;
     palette[i][0] = palette[i][1] = palette[i][2] = v;
@@ -41,11 +41,37 @@ uint8_t find_nearest_vga(uint8_t r, uint8_t g, uint8_t b,
   return (uint8_t)best;
 }
 
+/* Simple RLE encoder: [count][color] pairs */
+static uint8_t *rle_encode(uint8_t *src, size_t len, size_t *out_len) {
+  uint8_t *out = malloc(len * 2); // worst case: no compression
+  if (!out) return NULL;
+
+  size_t si = 0, di = 0;
+  while (si < len) {
+    uint8_t color = src[si++];
+    uint8_t count = 1;
+    while (si < len && src[si] == color && count < 255) {
+      count++;
+      si++;
+    }
+    out[di++] = count;
+    out[di++] = color;
+  }
+
+  *out_len = di;
+  return out;
+}
+
 int main(int argc, char **argv) {
-  if (argc != 3) {
-    fprintf(stderr, "Usage: %s input.png output.imf\n", argv[0]);
+  bool use_rle = false;
+
+  if (argc < 3 || argc > 4) {
+    fprintf(stderr, "Usage: %s input.png output.imf [--rle]\n", argv[0]);
     return 1;
   }
+
+  if (argc == 4 && strcmp(argv[3], "--rle") == 0)
+    use_rle = true;
 
   FILE *fp = fopen(argv[1], "rb");
   if (!fp) {
@@ -81,8 +107,8 @@ int main(int argc, char **argv) {
   int bit_depth = png_get_bit_depth(png, info);
 
   if (width > MAX_X || height > MAX_Y) {
-    fprintf(stderr, "Image too large: %dx%d (max %dx%d)\n", width, height,
-            MAX_X, MAX_Y);
+    fprintf(stderr, "Image too large: %dx%d (max %dx%d)\n",
+            width, height, MAX_X, MAX_Y);
     return 1;
   }
 
@@ -113,12 +139,10 @@ int main(int argc, char **argv) {
   uint8_t palette[256][3];
   vga_palette(palette);
 
-  size_t imf_size = sizeof(imf_t) + width * height * sizeof(uint8_t);
-  imf_t *imf = malloc(imf_size);
-  imf->x = width;
-  imf->y = height;
+  size_t raw_size = width * height;
+  uint8_t *raw_pixels = malloc(raw_size);
+  uint8_t *dst = raw_pixels;
 
-  uint8_t *dst = imf->colors;
   for (int y = 0; y < height; y++) {
     png_bytep row = row_pointers[y];
     for (int x = 0; x < width; x++) {
@@ -129,11 +153,31 @@ int main(int argc, char **argv) {
     }
   }
 
+  uint8_t *final_data = raw_pixels;
+  size_t final_size = raw_size;
+
+  if (use_rle) {
+    final_data = rle_encode(raw_pixels, raw_size, &final_size);
+    if (!final_data) {
+      fprintf(stderr, "RLE encoding failed\n");
+      return 1;
+    }
+    free(raw_pixels);
+  }
+
+  size_t imf_size = sizeof(imf_t) + final_size;
+  imf_t *imf = malloc(imf_size);
+  imf->x = width;
+  imf->y = height;
+  imf->rle_enabled = use_rle;
+  memcpy(imf->colors, final_data, final_size);
+
   FILE *out = fopen(argv[2], "wb");
   if (!out) {
     perror("fopen output");
     return 1;
   }
+
   fwrite(imf, imf_size, 1, out);
   fclose(out);
 
@@ -142,7 +186,12 @@ int main(int argc, char **argv) {
   free(row_pointers);
   png_destroy_read_struct(&png, &info, NULL);
   free(imf);
+  if (use_rle)
+    free(final_data);
 
-  printf("Converted %s → %s (%dx%d)\n", argv[1], argv[2], width, height);
+  printf("Converted %s → %s (%dx%d) [%s]\n",
+         argv[1], argv[2], width, height,
+         use_rle ? "RLE" : "RAW");
+
   return 0;
 }

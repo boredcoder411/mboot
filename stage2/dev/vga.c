@@ -1,5 +1,22 @@
 #include "vga.h"
 #include "io.h"
+#include "mem.h"
+#include "serial.h"
+
+int x, y = 0;
+uint8_t *glyphs = NULL;
+
+void vga_init(uint8_t *g) {
+  remap_vga_dac();
+  memset(VIDEO_MEMORY, 0, 320 * 200);
+
+  if (!g) {
+    serial_print("glyphs is null. was the file loaded correctly?\n");
+    asm("cli;hlt");
+  }
+
+  glyphs = g;
+}
 
 void put_pixel(int x, int y, uint8_t color) {
   uint8_t *video_memory = (uint8_t *)VIDEO_MEMORY;
@@ -67,9 +84,43 @@ void display_glyph(uint8_t *glyphs, uint32_t glyph_index, int x, int y,
 }
 
 void display_imf(imf_t *imf, int pos_x, int pos_y) {
-  for (uint8_t j = 0; j < imf->y; j++) {
-    for (uint8_t i = 0; i < imf->x; i++) {
-      put_pixel(pos_x + i, pos_y + j, imf->colors[j * imf->x + i]);
+  if (!imf) return;
+
+  uint16_t width  = imf->x;
+  uint16_t height = imf->y;
+  uint16_t total  = width * height;
+
+  if (!imf->rle_enabled) {
+    for (uint8_t j = 0; j < height; j++) {
+      for (uint8_t i = 0; i < width; i++) {
+        put_pixel(pos_x + i, pos_y + j, imf->colors[j * width + i]);
+      }
     }
+    return;
+  }
+
+  uint16_t x = 0, y = 0;
+
+  size_t i = 0;
+  while (i + 1 < total * 2 && y < height) {
+    uint8_t count = imf->colors[i++];
+    uint8_t color = imf->colors[i++];
+
+    for (uint8_t k = 0; k < count; k++) {
+      put_pixel(pos_x + x, pos_y + y, color);
+      x++;
+      if (x >= width) {
+        x = 0;
+        y++;
+        if (y >= height) break;
+      }
+    }
+  }
+}
+
+void display_string(char *str, uint8_t color) {
+  for (uint32_t i = 0; str[i + 1] != '\0'; i++) {
+    display_glyph(glyphs, str[i], x, y, color);
+    x += 8;
   }
 }

@@ -95,7 +95,7 @@ imf: tools/imf.c | $(BUILD)
 
 assets.wad: psf wad_tool imf | $(BUILD)
 	$(BUILD)/psf test_files/font.png $(BUILD)/font.psf
-	$(BUILD)/imf test_files/icon.png $(BUILD)/icon.imf
+	$(BUILD)/imf test_files/icon.png $(BUILD)/icon.imf --rle
 	$(BUILD)/wad_tool pack assets.wad IWAD $(BUILD)/font.psf $(BUILD)/icon.imf test_files/test.txt
 
 format:
