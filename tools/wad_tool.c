@@ -1,4 +1,4 @@
-#include "../stage2/fs.h"
+#include "fs.h"
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>

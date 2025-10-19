@@ -1,4 +1,4 @@
-#include "disk.h"
+#include "dev/disk.h"
 #include "io.h"
 #include "utils.h"
 

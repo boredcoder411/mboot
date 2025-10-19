@@ -1,4 +1,4 @@
-#include "keyboard.h"
+#include "dev/keyboard.h"
 #include "cpu/interrupts/irq.h"
 #include "cpu/pic/pic.h"
 #include "dev/serial.h"

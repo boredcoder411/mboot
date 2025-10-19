@@ -1,4 +1,4 @@
-#include "pit.h"
+#include "cpu/pit/pit.h"
 #include "io.h"
 
 void pit_init() {

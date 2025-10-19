@@ -1,6 +1,6 @@
-#include "isr.h"
+#include "cpu/interrupts/isr.h"
+#include "cpu/interrupts/idt.h"
 #include "dev/serial.h"
-#include "idt.h"
 #include "io.h"
 #include "utils.h"
 

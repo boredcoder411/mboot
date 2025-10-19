@@ -1,7 +1,7 @@
-#include "vga.h"
+#include "dev/vga.h"
+#include "dev/serial.h"
 #include "io.h"
 #include "mem.h"
-#include "serial.h"
 #include "utils.h"
 
 int x, y = 0;

@@ -1,9 +1,9 @@
-#include "irq.h"
+#include "cpu/interrupts/irq.h"
+#include "cpu/interrupts/idt.h"
+#include "cpu/interrupts/isr.h"
 #include "cpu/pic/pic.h"
 #include "dev/serial.h"
-#include "idt.h"
 #include "io.h"
-#include "isr.h"
 #include "utils.h"
 
 void (*irq_handlers[IRQs])(registers_t *regs) = {0};

@@ -3,7 +3,7 @@ LD = ld.lld
 OBJCOPY = llvm-objcopy
 
 CFLAGS = -target i386-elf -ffreestanding -fno-pic -fno-pie -mno-red-zone \
-         -Wall -Wextra -Werror -g -c -Istage2/ -Os
+         -Wall -Wextra -Werror -g -c -Iinc/ -Os
 LDFLAGS = -m elf_i386 -T link.ld -nostdlib -static -o kernel.elf
 
 BUILD = build
@@ -81,19 +81,19 @@ image: stage1 stage2 boot.bin assets.wad mkpart wpart
 	@echo "Disk image created! Use xxd $(IMAGE) | less to inspect"
 
 wad_tool: tools/wad_tool.c | $(BUILD)
-	gcc -o $(BUILD)/wad_tool tools/wad_tool.c -Istage2/
+	gcc -o $(BUILD)/wad_tool tools/wad_tool.c -Iinc/
 
 mkpart: tools/mkpart.c | $(BUILD)
-	gcc -o $(BUILD)/mkpart tools/mkpart.c -Istage2/
+	gcc -o $(BUILD)/mkpart tools/mkpart.c -Iinc/
 
 psf: tools/psf.c | $(BUILD)
-	gcc -o $(BUILD)/psf tools/psf.c -Istage2/ $$(pkg-config --cflags --libs libpng)
+	gcc -o $(BUILD)/psf tools/psf.c -Iinc/ $$(pkg-config --cflags --libs libpng)
 
 wpart: tools/wpart.c | $(BUILD)
-	gcc -o $(BUILD)/wpart tools/wpart.c -Istage2/
+	gcc -o $(BUILD)/wpart tools/wpart.c -Iinc/
 
 imf: tools/imf.c | $(BUILD)
-	gcc -o $(BUILD)/imf tools/imf.c -Istage2/ $$(pkg-config --cflags --libs libpng)
+	gcc -o $(BUILD)/imf tools/imf.c -Iinc/ $$(pkg-config --cflags --libs libpng)
 
 assets.wad: psf wad_tool imf | $(BUILD)
 	$(BUILD)/psf test_files/font.png $(BUILD)/font.psf
