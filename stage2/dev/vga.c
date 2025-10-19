@@ -2,6 +2,7 @@
 #include "io.h"
 #include "mem.h"
 #include "serial.h"
+#include "utils.h"
 
 int x, y = 0;
 uint8_t *glyphs = NULL;
@@ -12,7 +13,7 @@ void vga_init(uint8_t *g) {
 
   if (!g) {
     serial_print("glyphs is null. was the file loaded correctly?\n");
-    asm("cli;hlt");
+    HALT()
   }
 
   glyphs = g;
@@ -84,11 +85,12 @@ void display_glyph(uint8_t *glyphs, uint32_t glyph_index, int x, int y,
 }
 
 void display_imf(imf_t *imf, int pos_x, int pos_y) {
-  if (!imf) return;
+  if (!imf)
+    return;
 
-  uint16_t width  = imf->x;
+  uint16_t width = imf->x;
   uint16_t height = imf->y;
-  uint16_t total  = width * height;
+  uint16_t total = width * height;
 
   if (!imf->rle_enabled) {
     for (uint8_t j = 0; j < height; j++) {
@@ -112,14 +114,15 @@ void display_imf(imf_t *imf, int pos_x, int pos_y) {
       if (x >= width) {
         x = 0;
         y++;
-        if (y >= height) break;
+        if (y >= height)
+          break;
       }
     }
   }
 }
 
 void display_string(char *str, uint8_t color) {
-  for (uint32_t i = 0; str[i + 1] != '\0'; i++) {
+  for (uint32_t i = 0; str[i] != '\0'; i++) {
     display_glyph(glyphs, str[i], x, y, color);
     x += 8;
   }
