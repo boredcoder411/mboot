@@ -58,8 +58,7 @@ void isr_handler(registers_t *r) {
   serial_print(exceptions[r->int_no]);
   serial_print("\n");
 
-  asm("cli");
-  asm("hlt");
+  HALT()
 }
 
 void install_exception_isrs() {

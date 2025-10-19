@@ -101,7 +101,7 @@ void *memcpy(void *dst, void *src, size_t n) {
   return dst;
 }
 
-void *alloc_page() {
+void *kmalloc(uint32_t bytes) {
   static uint32_t next_paddr = 0;
 
   if (next_paddr == 0) {
@@ -110,79 +110,13 @@ void *alloc_page() {
   }
 
   uint32_t paddr = next_paddr;
-  next_paddr += PAGE_SIZE;
+  next_paddr += bytes;
 
   if (next_paddr > free_ram_end) {
     serial_print("Out of memory :(\n");
-    asm("cli");
-    asm("hlt");
+    HALT()
   }
 
-  memset((void *)paddr, 0, PAGE_SIZE);
+  memset((void *)paddr, 0, bytes);
   return (void *)paddr;
-}
-
-static block_header_t *free_list = NULL;
-
-#define ALIGN4(x) (((((x) - 1) >> 2) << 2) + 4)
-#define BLOCK_SIZE sizeof(block_header_t)
-
-void *kmalloc(size_t size) {
-  size = ALIGN4(size);
-  block_header_t *curr = free_list;
-  block_header_t *prev = NULL;
-
-  // First-fit search
-  while (curr) {
-    if (curr->free && curr->size >= size) {
-      curr->free = 0;
-      return (void *)(curr + 1);
-    }
-    prev = curr;
-    curr = curr->next;
-  }
-
-  // No suitable block found → expand heap
-  uintptr_t addr = free_ram;
-  uintptr_t new_free_ram = free_ram + BLOCK_SIZE + size;
-
-  if (new_free_ram > free_ram_end) {
-    serial_print("kmalloc: Out of memory!\n");
-    asm("cli; hlt");
-  }
-
-  block_header_t *block = (block_header_t *)addr;
-  block->size = size;
-  block->free = 0;
-  block->next = NULL;
-
-  free_ram = new_free_ram;
-
-  if (prev) {
-    prev->next = block;
-  } else {
-    free_list = block;
-  }
-
-  return (void *)(block + 1);
-}
-
-void kfree(void *ptr) {
-  if (!ptr)
-    return;
-
-  block_header_t *block = (block_header_t *)ptr - 1;
-  block->free = 1;
-
-  // Coalescing (optional simple version)
-  block_header_t *curr = free_list;
-  while (curr) {
-    if (curr->free) {
-      while (curr->next && curr->next->free) {
-        curr->size += BLOCK_SIZE + curr->next->size;
-        curr->next = curr->next->next;
-      }
-    }
-    curr = curr->next;
-  }
 }

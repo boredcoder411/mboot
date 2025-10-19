@@ -35,3 +35,4 @@ void draw_line(int x0, int y0, int x1, int y1, uint8_t color);
 void remap_vga_dac();
 void display_string(char *str, uint8_t color);
 void display_imf(imf_t *imf, int pos_x, int pos_y);
+void clear_screen();

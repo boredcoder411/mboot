@@ -5,6 +5,7 @@
 #include "cpu/pit/pit.h"
 #include "dev/disk.h"
 #include "dev/keyboard.h"
+#include "dev/rtc.h"
 #include "dev/serial.h"
 #include "dev/vga.h"
 #include "fs.h"
@@ -17,6 +18,13 @@
 
 extern void enable_fpu();
 
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+void pit_handler(registers_t *r) {
+  clear_screen();
+  char *time = fetch_rtc();
+  display_string(time, VGA_WHITE);
+}
+
 void loader_start() {
   for (int i = 0; i < IRQs; i++) {
     pic_set_mask(i);
@@ -28,6 +36,8 @@ void loader_start() {
   pit_init();
   enable_fpu();
   install_keyboard();
+  install_irq(0, pit_handler);
+  pic_clear_mask(0);
 
   e820_entry_t *mem_map = (e820_entry_t *)0x9000;
   uint16_t entry_count = (*(uint16_t *)0x8E00);
@@ -45,16 +55,16 @@ void loader_start() {
 
   if (found == 4) {
     serial_print("couldn't find second partition");
-    asm("cli;hlt");
+    HALT()
   }
 
-  wad_header_t *wad = alloc_page();
+  wad_header_t *wad = kmalloc(4096);
   ata_lba_read(mbr->partitions[found].first_lba, 4, wad, 0);
 
   psf_header_t *psf = find_file("font.psf", wad);
   if (psf->magic != PSF1_FONT_MAGIC) {
     serial_print("invalid psf file\n");
-    asm("cli;hlt");
+    HALT()
   }
   uint8_t *glyphs = (uint8_t *)(psf + 1);
   vga_init(glyphs);
@@ -65,7 +75,7 @@ void loader_start() {
   imf_t *imf_file = find_file("icon.imf", wad);
   display_imf(imf_file, 0, 16);
 
-  asm("sti");
+  STI()
 
   while (1) {
   }

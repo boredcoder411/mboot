@@ -100,3 +100,5 @@ void print_float(float f) {
   serial_print(".");
   serial_print(uint_to_str(decimal));
 }
+
+uint8_t bcd_to_bin(uint8_t val) { return (val & 0x0F) + ((val / 16) * 10); }

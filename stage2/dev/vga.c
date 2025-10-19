@@ -127,3 +127,9 @@ void display_string(char *str, uint8_t color) {
     x += 8;
   }
 }
+
+void clear_screen() {
+  x = 0;
+  y = 0;
+  memset(VIDEO_MEMORY, 0, 320 * 200);
+}

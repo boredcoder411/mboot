@@ -1,5 +1,6 @@
 #include "disk.h"
 #include "io.h"
+#include "utils.h"
 
 #define ATA_PRIMARY_IO 0x1F0
 #define ATA_REG_STATUS (ATA_PRIMARY_IO + 7)
@@ -34,7 +35,7 @@ void ata_lba_read(uint32_t lba, uint8_t sector_count, void *buffer,
     do {
       status = inb(ATA_REG_STATUS);
       if (status & 0x01) {
-        asm("cli;hlt");
+        HALT()
         return;
       }
     } while ((status & 0x88) != 0x08);

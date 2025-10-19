@@ -44,7 +44,8 @@ uint8_t find_nearest_vga(uint8_t r, uint8_t g, uint8_t b,
 /* Simple RLE encoder: [count][color] pairs */
 static uint8_t *rle_encode(uint8_t *src, size_t len, size_t *out_len) {
   uint8_t *out = malloc(len * 2); // worst case: no compression
-  if (!out) return NULL;
+  if (!out)
+    return NULL;
 
   size_t si = 0, di = 0;
   while (si < len) {
@@ -107,8 +108,8 @@ int main(int argc, char **argv) {
   int bit_depth = png_get_bit_depth(png, info);
 
   if (width > MAX_X || height > MAX_Y) {
-    fprintf(stderr, "Image too large: %dx%d (max %dx%d)\n",
-            width, height, MAX_X, MAX_Y);
+    fprintf(stderr, "Image too large: %dx%d (max %dx%d)\n", width, height,
+            MAX_X, MAX_Y);
     return 1;
   }
 
@@ -189,8 +190,7 @@ int main(int argc, char **argv) {
   if (use_rle)
     free(final_data);
 
-  printf("Converted %s → %s (%dx%d) [%s]\n",
-         argv[1], argv[2], width, height,
+  printf("Converted %s → %s (%dx%d) [%s]\n", argv[1], argv[2], width, height,
          use_rle ? "RLE" : "RAW");
 
   return 0;
