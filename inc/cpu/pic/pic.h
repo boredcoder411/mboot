@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdbool.h>
 
 #define PIC1 0x20
 #define PIC1_OFFSET 0x20
@@ -17,5 +18,6 @@
 
 void pic_clear_mask(size_t i);
 void pic_set_mask(size_t i);
+bool pic_check_mask(size_t i);
 void pic_remap();
 void pic_send_eoi(size_t i);
