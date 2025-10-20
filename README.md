@@ -36,3 +36,6 @@ As filesystems and elf files aren't implemented yet, programs you want to launch
 - [ ] elf loader
 - [ ] paging
 - [ ] libc
+
+## Screenshots
+![mboot running in qemu](screenshots/mboot_sc.png)
