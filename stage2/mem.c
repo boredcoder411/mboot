@@ -34,18 +34,15 @@ void check_overlaps(uint16_t count, e820_entry_t *entries) {
 }
 
 void dump_mmap(uint16_t count, e820_entry_t *entries) {
-    for (uint16_t i = 0; i < count; i++) {
-        e820_entry_t *entry = &entries[i];
+  for (uint16_t i = 0; i < count; i++) {
+    e820_entry_t *entry = &entries[i];
 
-        serial_printf(
-            "Base: 0x%08X%08X, Length: 0x%08X%08X, Type: %u\n",
-            (uint32_t)(entry->base >> 32),
-            (uint32_t)(entry->base & 0xFFFFFFFF),
-            (uint32_t)(entry->length >> 32),
-            (uint32_t)(entry->length & 0xFFFFFFFF),
-            entry->type
-        );
-    }
+    serial_printf("Base: 0x%08X%08X, Length: 0x%08X%08X, Type: %u\n",
+                  (uint32_t)(entry->base >> 32),
+                  (uint32_t)(entry->base & 0xFFFFFFFF),
+                  (uint32_t)(entry->length >> 32),
+                  (uint32_t)(entry->length & 0xFFFFFFFF), entry->type);
+  }
 }
 
 uint64_t calculate_total_size(uint16_t count, e820_entry_t *entries) {

@@ -29,7 +29,8 @@ static inline int is_transmit_empty(void) {
 }
 
 void write_serial(char a) {
-  while (!is_transmit_empty());
+  while (!is_transmit_empty())
+    ;
   outb(SERIAL_PORT, a);
 }
 
@@ -67,8 +68,8 @@ static void serial_print_uint(unsigned int value, int base, int width,
   }
 }
 
-static void serial_print_int(int value, int base, int width,
-                             bool pad_zero, bool uppercase) {
+static void serial_print_int(int value, int base, int width, bool pad_zero,
+                             bool uppercase) {
   if (base == 10 && value < 0) {
     write_serial('-');
     serial_print_uint((unsigned int)(-value), base, width, pad_zero, uppercase);
@@ -103,39 +104,38 @@ void serial_printf(const char *fmt, ...) {
     }
 
     switch (*p) {
-      case 'c': {
-        char c = (char)va_arg(args, int);
-        write_serial(c);
-        break;
-      }
-      case 's': {
-        const char *s = va_arg(args, const char *);
-        serial_print_str(s ? s : "(null)");
-        break;
-      }
-      case 'd':
-      case 'i':
-        serial_print_int(va_arg(args, int), 10, width, pad_zero, false);
-        break;
-      case 'u':
-        serial_print_uint(va_arg(args, unsigned int), 10, width, pad_zero, false);
-        break;
-      case 'x':
-        serial_print_uint(va_arg(args, unsigned int), 16, width, pad_zero, false);
-        break;
-      case 'X':
-        serial_print_uint(va_arg(args, unsigned int), 16, width, pad_zero, true);
-        break;
-      case '%':
-        write_serial('%');
-        break;
-      default:
-        write_serial('%');
-        write_serial(*p);
-        break;
+    case 'c': {
+      char c = (char)va_arg(args, int);
+      write_serial(c);
+      break;
+    }
+    case 's': {
+      const char *s = va_arg(args, const char *);
+      serial_print_str(s ? s : "(null)");
+      break;
+    }
+    case 'd':
+    case 'i':
+      serial_print_int(va_arg(args, int), 10, width, pad_zero, false);
+      break;
+    case 'u':
+      serial_print_uint(va_arg(args, unsigned int), 10, width, pad_zero, false);
+      break;
+    case 'x':
+      serial_print_uint(va_arg(args, unsigned int), 16, width, pad_zero, false);
+      break;
+    case 'X':
+      serial_print_uint(va_arg(args, unsigned int), 16, width, pad_zero, true);
+      break;
+    case '%':
+      write_serial('%');
+      break;
+    default:
+      write_serial('%');
+      write_serial(*p);
+      break;
     }
   }
 
   va_end(args);
 }
-
