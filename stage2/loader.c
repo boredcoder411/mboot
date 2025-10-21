@@ -5,6 +5,7 @@
 #include "cpu/pit/pit.h"
 #include "dev/disk.h"
 #include "dev/keyboard.h"
+#include "dev/pci.h"
 #include "dev/rtc.h"
 #include "dev/serial.h"
 #include "dev/vga.h"
@@ -47,18 +48,11 @@ typedef struct {
 } Vec2;
 
 #define CUBE_SIZE 40
-Vec3 cube_vertices[8] = {
-  {-1, -1, -1}, {1, -1, -1},
-  {1,  1, -1}, {-1,  1, -1},
-  {-1, -1,  1}, {1, -1,  1},
-  {1,  1,  1}, {-1,  1,  1}
-};
+Vec3 cube_vertices[8] = {{-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1},
+                         {-1, -1, 1},  {1, -1, 1},  {1, 1, 1},  {-1, 1, 1}};
 
-int cube_edges[12][2] = {
-  {0,1}, {1,2}, {2,3}, {3,0},
-  {4,5}, {5,6}, {6,7}, {7,4},
-  {0,4}, {1,5}, {2,6}, {3,7}
-};
+int cube_edges[12][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6},
+                         {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
 
 float angle_x = 0.0f;
 float angle_y = 0.0f;
@@ -73,13 +67,16 @@ Vec2 project(Vec3 v) {
   float z = v.z + dist;
   float px = (v.x / z) * scale + CX;
   float py = (v.y / z) * scale + CY;
-  return (Vec2){ (int)px, (int)py };
+  return (Vec2){(int)px, (int)py};
 }
 
 void draw_cube() {
-  if (angle_x > 6.283185f) angle_x -= 6.283185f;
-  if (angle_y > 6.283185f) angle_y -= 6.283185f;
-  if (angle_z > 6.283185f) angle_z -= 6.283185f;
+  if (angle_x > 6.283185f)
+    angle_x -= 6.283185f;
+  if (angle_y > 6.283185f)
+    angle_y -= 6.283185f;
+  if (angle_z > 6.283185f)
+    angle_z -= 6.283185f;
 
   Vec2 projected[8];
   for (int i = 0; i < 8; i++) {
@@ -87,15 +84,18 @@ void draw_cube() {
 
     float y = v.y * cosf(angle_x) - v.z * sinf(angle_x);
     float z = v.y * sinf(angle_x) + v.z * cosf(angle_x);
-    v.y = y; v.z = z;
+    v.y = y;
+    v.z = z;
 
     float x = v.x * cosf(angle_y) + v.z * sinf(angle_y);
     z = -v.x * sinf(angle_y) + v.z * cosf(angle_y);
-    v.x = x; v.z = z;
+    v.x = x;
+    v.z = z;
 
     x = v.x * cosf(angle_z) - v.y * sinf(angle_z);
     y = v.x * sinf(angle_z) + v.y * cosf(angle_z);
-    v.x = x; v.y = y;
+    v.x = x;
+    v.y = y;
 
     projected[i] = project(v);
   }
@@ -148,7 +148,7 @@ void loader_start() {
   }
 
   if (found == 4) {
-    serial_print("couldn't find second partition");
+    serial_printf("couldn't find second partition");
     HALT()
   }
 
@@ -157,7 +157,7 @@ void loader_start() {
 
   psf_header_t *psf = find_file("font.psf", wad);
   if (psf->magic != PSF1_FONT_MAGIC) {
-    serial_print("invalid psf file\n");
+    serial_printf("invalid psf file\n");
     HALT()
   }
   uint8_t *glyphs = (uint8_t *)(psf + 1);
@@ -168,6 +168,8 @@ void loader_start() {
 
   imf_t *imf_file = find_file("icon.imf", wad);
   display_imf(imf_file, 0, 16);
+
+  pci_enumerate();
 
   STI()
 

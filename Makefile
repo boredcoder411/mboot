@@ -17,7 +17,7 @@ $(BUILD):
 stage1: stage1/boot.asm | $(BUILD)
 	nasm -f bin stage1/boot.asm -o boot.bin
 
-stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c stage2/io.c stage2/dev/disk.c stage2/dev/serial.c stage2/fs.c stage2/mbr.c stage2/cpu/interrupts/idt.c stage2/cpu/interrupts/isr.asm stage2/cpu/interrupts/isr.c stage2/cpu/interrupts/irq.asm stage2/cpu/interrupts/irq.c stage2/cpu/pic/pic.c stage2/cpu/pit/pit.c stage2/dev/keyboard.c stage2/mem.c stage2/dev/rtc.c | $(BUILD)
+stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c stage2/io.c stage2/dev/disk.c stage2/dev/serial.c stage2/fs.c stage2/mbr.c stage2/cpu/interrupts/idt.c stage2/cpu/interrupts/isr.asm stage2/cpu/interrupts/isr.c stage2/cpu/interrupts/irq.asm stage2/cpu/interrupts/irq.c stage2/cpu/pic/pic.c stage2/cpu/pit/pit.c stage2/dev/keyboard.c stage2/mem.c stage2/dev/rtc.c stage2/dev/pci.c | $(BUILD)
 	nasm -f elf stage2/start_loader.asm -o $(BUILD)/start_loader.o
 	nasm -f elf stage2/cpu/interrupts/idt.asm -o $(BUILD)/idt_s.o
 	nasm -f elf stage2/cpu/interrupts/isr.asm -o $(BUILD)/isr_s.o
@@ -39,6 +39,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 	$(CC) $(CFLAGS) stage2/dev/keyboard.c -o $(BUILD)/keyboard.o
 	$(CC) $(CFLAGS) stage2/mem.c -o $(BUILD)/mem.o
 	$(CC) $(CFLAGS) stage2/dev/rtc.c -o $(BUILD)/rtc.o
+	$(CC) $(CFLAGS) stage2/dev/pci.c -o $(BUILD)/pci.o
 
 	$(LD) $(LDFLAGS) \
 		$(BUILD)/start_loader.o \
@@ -60,7 +61,8 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 		$(BUILD)/pit.o \
 		$(BUILD)/keyboard.o \
 		$(BUILD)/mem.o \
-		$(BUILD)/rtc.o
+		$(BUILD)/rtc.o \
+		$(BUILD)/pci.o
 	
 	$(OBJCOPY) --only-keep-debug kernel.elf kernel.sym
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
