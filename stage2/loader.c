@@ -19,6 +19,7 @@
 
 extern void enable_fpu();
 
+#ifdef CUBE_DEMO
 float cosf(float x) {
   float result = 1.0f;
   float term = 1.0f;
@@ -118,7 +119,7 @@ void pit_handler(registers_t *r) {
   char *time = fetch_rtc();
   display_string(time, VGA_WHITE);
 }
-
+#endif
 void loader_start() {
   for (int i = 0; i < IRQs; i++) {
     pic_set_mask(i);
@@ -130,9 +131,10 @@ void loader_start() {
   pit_init();
   enable_fpu();
   install_keyboard();
+#ifdef CUBE_DEMO
   install_irq(0, pit_handler);
   pic_clear_mask(0);
-
+#endif
   e820_entry_t *mem_map = (e820_entry_t *)0x9000;
   uint16_t entry_count = (*(uint16_t *)0x8E00);
 

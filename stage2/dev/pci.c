@@ -2,6 +2,7 @@
 #include "dev/serial.h"
 #include "io.h"
 #include <stddef.h>
+#include <stdint.h>
 
 pci_device_info_t pci_device_table[] = {
     {0x10EC, 0x8029, "NE2000 (Realtek RTL-8029)"},
@@ -9,7 +10,8 @@ pci_device_info_t pci_device_table[] = {
     {0x8086, 0x7000, "Intel 82371SB - ISA Bridge"},
 };
 
-#define PCI_DEVICE_TABLE_SIZE (sizeof(pci_device_table) / sizeof(pci_device_table[0]))
+#define PCI_DEVICE_TABLE_SIZE                                                  \
+  (sizeof(pci_device_table) / sizeof(pci_device_table[0]))
 
 uint32_t pci_config_read(uint8_t bus, uint8_t slot, uint8_t func,
                          uint8_t offset) {
@@ -59,9 +61,10 @@ void pci_enumerate() {
                       subclass);
 
         const char *name = pci_lookup_device(vendor, device_id);
-        if (name) {
+        if (name)
           serial_printf("  -> Device: %s\n", name);
-        }
+
+        pci_handle_device(bus, device, func, vendor, device_id);
       }
     }
   }
