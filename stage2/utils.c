@@ -79,10 +79,9 @@ bool strncmp(const char *a, const char *b, size_t n) {
 void hexdump(void *data, size_t size) {
   uint8_t *ptr = (uint8_t *)data;
   for (size_t i = 0; i < size; i++) {
-    serial_print(uint_to_hex(ptr[i]));
-    serial_print(" ");
+    serial_printf("%u ", ptr[i]);
   }
-  serial_print("\n");
+  serial_printf("\n");
 }
 
 float bytes_to_gb(uint64_t bytes) {
@@ -96,9 +95,9 @@ void print_float(float f) {
   if (decimal < 0)
     decimal = -decimal;
 
-  serial_print(int_to_str(whole));
-  serial_print(".");
-  serial_print(uint_to_str(decimal));
+  serial_printf(int_to_str(whole));
+  serial_printf(".");
+  serial_printf(uint_to_str(decimal));
 }
 
 uint8_t bcd_to_bin(uint8_t val) { return (val & 0x0F) + ((val / 16) * 10); }

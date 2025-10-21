@@ -17,10 +17,10 @@ void pic_set_mask(size_t i) {
 }
 
 bool pic_check_mask(size_t i) {
-    uint16_t port = (i < 8) ? PIC1_DATA : PIC2_DATA;
-    uint8_t bit = (uint8_t)(1 << (i < 8 ? i : (i - 8)));
-    uint8_t mask = inb(port);
-    return (mask & bit) != 0;
+  uint16_t port = (i < 8) ? PIC1_DATA : PIC2_DATA;
+  uint8_t bit = (uint8_t)(1 << (i < 8 ? i : (i - 8)));
+  uint8_t mask = inb(port);
+  return (mask & bit) != 0;
 }
 
 void pic_remap() {

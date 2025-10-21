@@ -38,25 +38,15 @@ char *exceptions[32] = {"Divide by zero",
                         "RESERVED"};
 
 void isr_handler(registers_t *r) {
-  serial_print("exception: ");
-  serial_print(int_to_str(r->int_no));
-  serial_print("\n");
+  serial_printf("exception: %i\n", r->int_no);
 
-  serial_print(" CS=");
-  serial_print(int_to_str(r->cs));
-  serial_print("\n");
+  serial_printf(" CS=%i\n", r->cs);
 
-  serial_print(" EIP=");
-  serial_print(int_to_str(r->eip));
-  serial_print("\n");
+  serial_printf(" EIP=%i\n", r->eip);
 
-  serial_print(" Error code=");
-  serial_print(int_to_str(r->err_code));
-  serial_print("\n");
+  serial_printf(" Error code=%i\n", r->err_code);
 
-  serial_print(" Exception message: ");
-  serial_print(exceptions[r->int_no]);
-  serial_print("\n");
+  serial_printf(" Exception message: %s\n", exceptions[r->int_no]);
 
   HALT()
 }

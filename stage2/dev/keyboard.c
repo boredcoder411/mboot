@@ -58,7 +58,7 @@ void keyboard_handler(registers_t *r) {
   ascii_char[2] = '\0';
 
   if (ascii_char[0]) {
-    serial_print(ascii_char);
+    serial_printf(ascii_char);
   }
 }
 

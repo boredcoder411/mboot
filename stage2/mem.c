@@ -21,36 +21,31 @@ void check_overlaps(uint16_t count, e820_entry_t *entries) {
 
       if ((a_start < b_end) && (b_start < a_end)) {
         overlap_count++;
-        serial_print("Overlap detected between entries ");
-        serial_print(int_to_str(i));
-        serial_print(" and ");
-        serial_print(int_to_str(j));
-        serial_print("\n");
+        serial_printf("Overlap detected between entries %i and %i\n", i, j);
       }
     }
   }
 
   if (overlap_count == 0) {
-    serial_print("No overlaps detected in memory map.\n");
+    serial_printf("No overlaps detected in memory map.\n");
   } else {
-    serial_print(int_to_str(overlap_count));
-    serial_print(" overlaps detected in memory map.\n");
+    serial_printf("%i overlaps detected in memory map.\n", overlap_count);
   }
 }
 
 void dump_mmap(uint16_t count, e820_entry_t *entries) {
-  for (uint16_t i = 0; i < count; i++) {
-    e820_entry_t *entry = &entries[i];
-    serial_print("Base: ");
-    serial_print(hextoa((int)(entry->base >> 32)));
-    serial_print(hextoa((int)(entry->base & 0xFFFFFFFF)));
-    serial_print(", Length: ");
-    serial_print(hextoa((int)(entry->length >> 32)));
-    serial_print(hextoa((int)(entry->length & 0xFFFFFFFF)));
-    serial_print(", Type: ");
-    serial_print(int_to_str(entry->type));
-    serial_print("\n");
-  }
+    for (uint16_t i = 0; i < count; i++) {
+        e820_entry_t *entry = &entries[i];
+
+        serial_printf(
+            "Base: 0x%08X%08X, Length: 0x%08X%08X, Type: %u\n",
+            (uint32_t)(entry->base >> 32),
+            (uint32_t)(entry->base & 0xFFFFFFFF),
+            (uint32_t)(entry->length >> 32),
+            (uint32_t)(entry->length & 0xFFFFFFFF),
+            entry->type
+        );
+    }
 }
 
 uint64_t calculate_total_size(uint16_t count, e820_entry_t *entries) {
@@ -70,7 +65,7 @@ void init_alloc(uint16_t count, e820_entry_t *entries) {
   check_overlaps(count, entries);
   uint64_t size = calculate_total_size(count, entries);
   print_float(bytes_to_gb(size));
-  serial_print(" GB detected...\n");
+  serial_printf(" GB detected...\n");
 
   uint16_t biggest_index = 0;
 
@@ -113,7 +108,7 @@ void *kmalloc(uint32_t bytes) {
   next_paddr += bytes;
 
   if (next_paddr > free_ram_end) {
-    serial_print("Out of memory :(\n");
+    serial_printf("Out of memory :(\n");
     HALT()
   }
 
