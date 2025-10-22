@@ -18,6 +18,7 @@
 #include <stdint.h>
 
 extern void enable_fpu();
+void send_arp_request();
 
 #ifdef CUBE_DEMO
 float cosf(float x) {
@@ -172,6 +173,7 @@ void loader_start() {
   display_imf(imf_file, 0, 16);
 
   pci_enumerate();
+  send_arp_request();
 
   STI()
 

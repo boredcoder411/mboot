@@ -61,8 +61,7 @@ void init_alloc(uint16_t count, e820_entry_t *entries) {
   dump_mmap(count, entries);
   check_overlaps(count, entries);
   uint64_t size = calculate_total_size(count, entries);
-  print_float(bytes_to_gb(size));
-  serial_printf(" GB detected...\n");
+  serial_printf("%f GB detected...\n", bytes_to_gb(size));
 
   uint16_t biggest_index = 0;
 

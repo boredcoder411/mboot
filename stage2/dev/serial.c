@@ -78,6 +78,28 @@ static void serial_print_int(int value, int base, int width, bool pad_zero,
   }
 }
 
+static void serial_print_float(float f, int width, int precision,
+                               bool pad_zero) {
+  if (f < 0) {
+    write_serial('-');
+    f = -f;
+  }
+
+  int int_part = (int)f;
+  float frac_part = f - int_part;
+
+  serial_print_int(int_part, 10, width, pad_zero, false);
+
+  write_serial('.');
+
+  for (int i = 0; i < precision; i++) {
+    frac_part *= 10;
+    int digit = (int)frac_part;
+    write_serial('0' + digit);
+    frac_part -= digit;
+  }
+}
+
 void serial_printf(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
@@ -92,6 +114,7 @@ void serial_printf(const char *fmt, ...) {
 
     bool pad_zero = false;
     int width = 0;
+    int precision = 6;
 
     if (*p == '0') {
       pad_zero = true;
@@ -101,6 +124,15 @@ void serial_printf(const char *fmt, ...) {
     while (*p >= '0' && *p <= '9') {
       width = width * 10 + (*p - '0');
       p++;
+    }
+
+    if (*p == '.') {
+      p++;
+      precision = 0;
+      while (*p >= '0' && *p <= '9') {
+        precision = precision * 10 + (*p - '0');
+        p++;
+      }
     }
 
     switch (*p) {
@@ -127,6 +159,11 @@ void serial_printf(const char *fmt, ...) {
     case 'X':
       serial_print_uint(va_arg(args, unsigned int), 16, width, pad_zero, true);
       break;
+    case 'f': {
+      double val = va_arg(args, double);
+      serial_print_float((float)val, width, precision, pad_zero);
+      break;
+    }
     case '%':
       write_serial('%');
       break;
