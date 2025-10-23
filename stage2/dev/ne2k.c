@@ -145,5 +145,5 @@ void send_arp_request() {
 
   ne2k_send(io_base, frame, 60);
 
-  INFO("NE2K", "ARP request sent for 10.0.2.2\n");
+  INFO("NE2K", "ARP request sent for 10.0.2.2");
 }
