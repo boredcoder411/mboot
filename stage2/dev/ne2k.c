@@ -71,8 +71,8 @@ void ne2k_init(uint8_t bus, uint8_t device, uint8_t func, uint16_t vendor,
   INFO("NE2k", "IO base: 0x%04X", io_base);
 
   if (ne2k_read_mac(io_base) == 0) {
-    INFO("NE2k", "MAC: %02X:%02X:%02X:%02X:%02X:%02X", mac[0],
-                  mac[1], mac[2], mac[3], mac[4], mac[5]);
+    INFO("NE2k", "MAC: %02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2],
+         mac[3], mac[4], mac[5]);
   } else {
     WARN("NE2k", "Failed to read MAC address.");
   }

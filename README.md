@@ -13,7 +13,11 @@ Running mboot needs:
 ## Building
 ```sh
 make
+# normal os
 qemu-system-x86_64 -m 4G -drive file=image.img -serial stdio
+
+# with networking enabled
+qemu-system-x86_64 -m 4G -drive file=image.img -serial stdio -device ne2k_pci,netdev=n0 -netdev user,id=n0 -object filter-dump,id=f1,netdev=n0,file=netdump.pcap
 ```
 
 ## Note
