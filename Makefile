@@ -3,7 +3,7 @@ LD = ld.lld
 OBJCOPY = llvm-objcopy
 
 CFLAGS = -target i386-elf -ffreestanding -fno-pic -fno-pie -mno-red-zone \
-         -Wall -Wextra -Werror -g -c -Iinc/ -Os \
+         -Wall -Wextra -Werror -g -c -Iinc/ -Idemos/ -Os \
          -ffunction-sections -fdata-sections -flto
 LDFLAGS = -m elf_i386 -T link.ld -nostdlib -static --gc-sections -o kernel.elf
 
@@ -11,6 +11,8 @@ BUILD = build
 IMAGE = image.img
 
 all: stage2 stage1 image
+
+CFLAGS += -DPSF_DEMO
 
 $(BUILD):
 	mkdir -p $(BUILD)

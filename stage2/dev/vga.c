@@ -7,10 +7,7 @@
 int x, y = 0;
 uint8_t *glyphs = NULL;
 
-void vga_init(uint8_t *g) {
-  remap_vga_dac();
-  memset(VIDEO_MEMORY, 0, 320 * 200);
-
+void glyph_init(uint8_t *g) {
   if (!g) {
     ERROR("VGA", "glyphs is null. was the file loaded correctly?");
     HALT()

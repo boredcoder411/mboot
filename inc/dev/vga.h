@@ -29,7 +29,7 @@
 
 #define VGA_GRAY(n) ((uint8_t)(216 + ((n) & 0x0F)))
 
-void vga_init(uint8_t *glyphs);
+void glyph_init(uint8_t *glyphs);
 void put_pixel(int x, int y, uint8_t color);
 void draw_line(int x0, int y0, int x1, int y1, uint8_t color);
 void remap_vga_dac();
