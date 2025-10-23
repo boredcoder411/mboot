@@ -12,7 +12,7 @@ void vga_init(uint8_t *g) {
   memset(VIDEO_MEMORY, 0, 320 * 200);
 
   if (!g) {
-    serial_printf("glyphs is null. was the file loaded correctly?\n");
+    ERROR("VGA", "glyphs is null. was the file loaded correctly?");
     HALT()
   }
 

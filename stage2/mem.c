@@ -21,15 +21,15 @@ void check_overlaps(uint16_t count, e820_entry_t *entries) {
 
       if ((a_start < b_end) && (b_start < a_end)) {
         overlap_count++;
-        serial_printf("Overlap detected between entries %i and %i\n", i, j);
+        WARN("MEM", "Overlap detected between entries %i and %i", i, j);
       }
     }
   }
 
   if (overlap_count == 0) {
-    serial_printf("No overlaps detected in memory map.\n");
+    INFO("MEM", "No overlaps detected in memory map.");
   } else {
-    serial_printf("%i overlaps detected in memory map.\n", overlap_count);
+    WARN("MEM", "%i overlaps detected in memory map.", overlap_count);
   }
 }
 
@@ -61,7 +61,7 @@ void init_alloc(uint16_t count, e820_entry_t *entries) {
   dump_mmap(count, entries);
   check_overlaps(count, entries);
   uint64_t size = calculate_total_size(count, entries);
-  serial_printf("%f GB detected...\n", bytes_to_gb(size));
+  INFO("MEM", "%f GB detected...", bytes_to_gb(size));
 
   uint16_t biggest_index = 0;
 
@@ -104,7 +104,7 @@ void *kmalloc(uint32_t bytes) {
   next_paddr += bytes;
 
   if (next_paddr > free_ram_end) {
-    serial_printf("Out of memory :(\n");
+    ERROR("MEM", "Out of memory :(");
     HALT()
   }
 

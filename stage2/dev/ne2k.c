@@ -63,22 +63,22 @@ void ne2k_init(uint8_t bus, uint8_t device, uint8_t func, uint16_t vendor,
 
   uint32_t bar0 = pci_config_read(bus, device, func, 0x10);
   if (!(bar0 & 0x1)) {
-    serial_printf("  [NE2K] BAR0 is not I/O type (0x%08X)\n", bar0);
+    ERROR("NE2k", "BAR0 is not I/O type (0x%08X)", bar0);
     return;
   }
 
   io_base = bar0 & ~0x3U;
-  serial_printf("  [NE2K] IO base: 0x%04X\n", io_base);
+  INFO("NE2k", "IO base: 0x%04X", io_base);
 
   if (ne2k_read_mac(io_base) == 0) {
-    serial_printf("  [NE2K] MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", mac[0],
+    INFO("NE2k", "MAC: %02X:%02X:%02X:%02X:%02X:%02X", mac[0],
                   mac[1], mac[2], mac[3], mac[4], mac[5]);
   } else {
-    serial_printf("  [NE2K] Failed to read MAC address.\n");
+    WARN("NE2k", "Failed to read MAC address.");
   }
 
   uint8_t irq = pci_config_read(bus, device, func, 0x3C) & 0xFF;
-  serial_printf("  [NE2K] PCI IRQ: %d\n", irq);
+  INFO("NE2k", "PCI IRQ: %d", irq);
 
   pic_clear_mask(irq);
 
@@ -114,7 +114,7 @@ void ne2k_send(uint16_t io_base, const uint8_t *frame, uint16_t len) {
 
   outb(io_base + NE2K_CR, CMD_STA | CMD_TXP);
 
-  serial_printf("[NE2K] Sent %u bytes\n", len);
+  INFO("NE2K", "Sent %u bytes", len);
 }
 
 void send_arp_request() {
@@ -145,5 +145,5 @@ void send_arp_request() {
 
   ne2k_send(io_base, frame, 60);
 
-  serial_printf("[NE2K] ARP request sent for 10.0.2.2\n");
+  INFO("NE2K", "ARP request sent for 10.0.2.2\n");
 }

@@ -38,7 +38,7 @@ char *exceptions[32] = {"Divide by zero",
                         "RESERVED"};
 
 void isr_handler(registers_t *r) {
-  serial_printf("exception: %i\n", r->int_no);
+  ERROR("EXCEPTION", "exception: %i\n", r->int_no);
 
   serial_printf(" CS=%i\n", r->cs);
 

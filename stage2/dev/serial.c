@@ -3,6 +3,9 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
+static const char *level_str[] = {"INFO", "WARN", "ERROR", "DEBUG"};
+static const char *level_col[] = {ANSI_GREEN, ANSI_YELLOW, ANSI_RED, ANSI_BLUE};
+
 int init_serial(void) {
   outb(SERIAL_PORT + 1, 0x00); // Disable interrupts
   outb(SERIAL_PORT + 3, 0x80); // Enable DLAB
@@ -98,6 +101,33 @@ static void serial_print_float(float f, int width, int precision,
     write_serial('0' + digit);
     frac_part -= digit;
   }
+}
+
+void message_preamble(const char *module, log_level_t level) {
+  for (int i = 0; level_col[level][i] != '\0'; i++) {
+    write_serial(level_col[level][i]);
+  }
+
+  write_serial('[');
+
+  for (int i = 0; level_str[level][i] != '\0'; i++) {
+    write_serial(level_str[level][i]);
+  }
+
+  write_serial(':');
+  write_serial(':');
+
+  for (int i = 0; module[i] != '\0'; i++) {
+    write_serial(module[i]);
+  }
+
+  write_serial(']');
+
+  for (int i = 0; ANSI_RESET[i] != '\0'; i++) {
+    write_serial(ANSI_RESET[i]);
+  }
+
+  write_serial(' ');
 }
 
 void serial_printf(const char *fmt, ...) {

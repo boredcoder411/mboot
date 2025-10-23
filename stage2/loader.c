@@ -151,7 +151,7 @@ void loader_start() {
   }
 
   if (found == 4) {
-    serial_printf("couldn't find second partition");
+    ERROR("MAIN", "couldn't find second partition");
     HALT()
   }
 
@@ -160,7 +160,7 @@ void loader_start() {
 
   psf_header_t *psf = find_file("font.psf", wad);
   if (psf->magic != PSF1_FONT_MAGIC) {
-    serial_printf("invalid psf file\n");
+    ERROR("MAIN", "invalid psf file\n");
     HALT()
   }
   uint8_t *glyphs = (uint8_t *)(psf + 1);
