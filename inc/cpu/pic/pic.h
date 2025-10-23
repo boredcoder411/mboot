@@ -1,7 +1,7 @@
 #pragma once
 
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #define PIC1 0x20
 #define PIC1_OFFSET 0x20

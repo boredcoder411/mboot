@@ -117,7 +117,7 @@ void ne2k_send(uint16_t io_base, const uint8_t *frame, uint16_t len) {
   INFO("NE2K", "Sent %u bytes", len);
 }
 
-void send_arp_request() {
+void ne2k_send_arp_request() {
   uint8_t frame[60];
   struct eth_hdr *eth = (struct eth_hdr *)frame;
   struct arp_pkt *arp = (struct arp_pkt *)(frame + sizeof(struct eth_hdr));
