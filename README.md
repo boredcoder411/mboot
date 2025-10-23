@@ -1,5 +1,5 @@
 # mboot
-mboot is a bootloader for i386 platforms.
+mboot is a minimal os for i386 platforms.
 
 ## Prequisites
 Building mboot depends on:
