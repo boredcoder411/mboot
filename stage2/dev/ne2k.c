@@ -10,7 +10,7 @@
 #include "utils.h"
 #include <stdint.h>
 
-uint16_t io_base;
+uint32_t io_base;
 uint8_t mac[6];
 
 #pragma GCC diagnostic ignored "-Wunused-parameter"

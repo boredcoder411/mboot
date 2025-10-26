@@ -23,11 +23,6 @@
 #include "time.c"
 #endif
 
-#ifdef NE2K_DEMO
-#include "dev/pci.h"
-void ne2k_send_arp_request(void);
-#endif
-
 #ifdef PSF_DEMO
 #include "psf.h"
 #endif
@@ -100,11 +95,6 @@ void loader_start(void) {
   } else {
     ERROR("MAIN", "missing icon.imf");
   }
-#endif
-
-#ifdef NE2K_DEMO
-  pci_enumerate();
-  ne2k_send_arp_request();
 #endif
 
 #ifdef E1K_DEMO

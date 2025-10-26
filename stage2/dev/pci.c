@@ -28,6 +28,20 @@ uint16_t pci_config_read_word(uint8_t bus, uint8_t device, uint8_t func,
   return (uint16_t)((data >> ((offset & 2) * 8)) & 0xFFFF);
 }
 
+void pci_enable_busmaster(uint8_t bus, uint8_t dev, uint8_t func) {
+  uint16_t cmd = pci_config_read_word(bus, dev, func, PCI_COMMAND);
+  cmd |= (1 << 2);
+  uint32_t address = (1U << 31) | ((uint32_t)bus << 16) |
+                     ((uint32_t)dev << 11) | ((uint32_t)func << 8) |
+                     (PCI_COMMAND & 0xFC);
+  outl(0xCF8, address);
+  outl(0xCFC, (cmd | ((uint32_t)cmd << 16)));
+}
+
+inline uint32_t pci_read_bar0(uint8_t bus, uint8_t dev, uint8_t func) {
+  return pci_config_read(bus, dev, func, PCI_BAR0);
+}
+
 const char *pci_lookup_device(uint16_t vendor_id, uint16_t device_id) {
   for (size_t i = 0; i < PCI_DEVICE_TABLE_SIZE; i++) {
     if (pci_device_table[i].vendor_id == vendor_id &&
