@@ -18,14 +18,14 @@ make
 qemu-system-x86_64 -m 4G -drive file=image.img -serial stdio
 
 # with networking enabled
-qemu-system-x86_64 -m 4G -drive file=image.img -serial stdio -device ne2k_pci,netdev=n0 -netdev user,id=n0 -object filter-dump,id=f1,netdev=n0,file=netdump.pcap
+qemu-system-x86_64 -m 4G -drive file=image.img -serial stdio -device e1000,netdev=n0 -netdev user,id=n0 -object filter-dump,id=f1,netdev=n0,file=netdump.pcap
 ```
 
 ## Demo options
 Demo options include:
 - `CUBE_DEMO`
 - `TIME_DEMO`
-- `NE2K_DEMO`
+- `E1K_DEMO`
 - `IMF_DEMO`
 - `PSF_DEMO`
 

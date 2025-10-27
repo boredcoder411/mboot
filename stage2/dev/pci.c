@@ -5,7 +5,6 @@
 #include <stdint.h>
 
 pci_device_info_t pci_device_table[] = {
-    {0x10EC, 0x8029, "NE2000 - NIC"},
     {0x8086, 0x100E, "E1000 - NIC"},
     {0x8086, 0x1237, "Intel 82440FX - Host Bridge"},
     {0x8086, 0x7000, "Intel 82371SB - ISA Bridge"},
