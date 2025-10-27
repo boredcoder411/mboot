@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-struct arp_pkt {
+typedef struct __attribute__((packed)) {
   uint16_t htype;
   uint16_t ptype;
   uint8_t hlen;
@@ -12,4 +12,4 @@ struct arp_pkt {
   uint8_t sender_ip[4];
   uint8_t target_mac[6];
   uint8_t target_ip[4];
-} __attribute__((packed));
+} arp_pkt;
