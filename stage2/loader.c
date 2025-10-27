@@ -28,6 +28,7 @@
 #endif
 
 #ifdef E1K_DEMO
+#include "dev/e1k.h"
 #include "dev/pci.h"
 #endif
 
@@ -99,6 +100,9 @@ void loader_start(void) {
 
 #ifdef E1K_DEMO
   pci_enumerate();
+  uint8_t src_ip[4] = {10, 0, 2, 15};
+  uint8_t target_ip[4] = {10, 0, 2, 2};
+  e1k_send_arp_request(src_ip, target_ip);
 #endif
 
   STI()

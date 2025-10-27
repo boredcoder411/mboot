@@ -5,7 +5,8 @@
 #include <stdint.h>
 
 pci_device_info_t pci_device_table[] = {
-    {0x10EC, 0x8029, "NE2000 (Realtek RTL-8029)"},
+    {0x10EC, 0x8029, "NE2000 - NIC"},
+    {0x8086, 0x100E, "E1000 - NIC"},
     {0x8086, 0x1237, "Intel 82440FX - Host Bridge"},
     {0x8086, 0x7000, "Intel 82371SB - ISA Bridge"},
 };
@@ -26,6 +27,26 @@ uint16_t pci_config_read_word(uint8_t bus, uint8_t device, uint8_t func,
                               uint8_t offset) {
   uint32_t data = pci_config_read(bus, device, func, offset & 0xFC);
   return (uint16_t)((data >> ((offset & 2) * 8)) & 0xFFFF);
+}
+
+void pci_config_write_word(uint8_t bus, uint8_t device, uint8_t func,
+                           uint8_t offset, uint16_t value) {
+  uint32_t aligned_offset = offset & 0xFC;
+
+  uint32_t address = (1U << 31) | ((uint32_t)bus << 16) |
+                     ((uint32_t)device << 11) | ((uint32_t)func << 8) |
+                     aligned_offset;
+
+  outl(PCI_CONFIG_ADDRESS, address);
+  uint32_t data = inl(PCI_CONFIG_DATA);
+
+  if ((offset & 2) == 0)
+    data = (data & 0xFFFF0000) | value;
+  else
+    data = (data & 0x0000FFFF) | ((uint32_t)value << 16);
+
+  outl(PCI_CONFIG_ADDRESS, address);
+  outl(PCI_CONFIG_DATA, data);
 }
 
 void pci_enable_busmaster(uint8_t bus, uint8_t dev, uint8_t func) {

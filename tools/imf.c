@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void vga_palette(uint8_t palette[256][3]) {
+void vga_palette(uint8_t palette[256][3]) {
   int i = 0;
   for (int r = 0; r < 6; r++) {
     for (int g = 0; g < 6; g++) {
@@ -42,7 +42,7 @@ uint8_t find_nearest_vga(uint8_t r, uint8_t g, uint8_t b,
 }
 
 /* Simple RLE encoder: [count][color] pairs */
-static uint8_t *rle_encode(uint8_t *src, size_t len, size_t *out_len) {
+uint8_t *rle_encode(uint8_t *src, size_t len, size_t *out_len) {
   uint8_t *out = malloc(len * 2); // worst case: no compression
   if (!out)
     return NULL;

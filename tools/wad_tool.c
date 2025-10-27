@@ -8,7 +8,7 @@
 
 wad_type_t w_type_arg;
 
-static int copy_file(FILE *dst, const char *src_path, uint32_t *bytes_written) {
+int copy_file(FILE *dst, const char *src_path, uint32_t *bytes_written) {
   FILE *src = fopen(src_path, "rb");
   if (!src) {
     fprintf(stderr, "Failed to open %s: %s\n", src_path, strerror(errno));
