@@ -2,8 +2,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 
-void lba_to_chs(uint32_t lba, uint8_t heads, uint8_t sectors,
-                       uint8_t chs[3]) {
+void lba_to_chs(uint32_t lba, uint8_t heads, uint8_t sectors, uint8_t chs[3]) {
   uint32_t c, h, s;
 
   c = lba / (heads * sectors);

@@ -4,9 +4,9 @@
 #include "dev/serial.h"
 #include "io.h"
 #include "mem.h"
-#include "utils.h"
-#include "net/eth.h"
 #include "net/arp.h"
+#include "net/eth.h"
+#include "utils.h"
 
 nic_descriptor nic_e1k;
 
@@ -211,21 +211,19 @@ void e1k_init(uint8_t bus, uint8_t device, uint8_t func, uint16_t vendor,
 }
 
 void e1k_send_arp_request(uint8_t src_ip[4], uint8_t target_ip[4]) {
-  uint8_t frame[60];
-  memset(frame, 0, sizeof(frame));
+  size_t frame_len = sizeof(eth_hdr) + sizeof(arp_pkt);
+  if (frame_len < 60)
+    frame_len = 60;
 
-  uint8_t *dst_mac = frame;
-  uint8_t *src_mac = frame + 6;
-  uint16_t *ethertype = (uint16_t *)(frame + 12);
+  uint8_t *frame = kmalloc(frame_len);
+  memset(frame, 0, frame_len);
 
-  memset(dst_mac, 0xFF, 6);
+  eth_hdr *eth = (eth_hdr *)frame;
+  memset(eth->dst, 0xFF, 6);
+  memcpy(eth->src, nic_e1k.mac, 6);
+  eth->ethertype = htons(0x0806);
 
-  memcpy(src_mac, nic_e1k.mac, 6);
-
-  *ethertype = htons(0x0806);
-
-  arp_pkt *arp = (arp_pkt *)(frame + 14);
-
+  arp_pkt *arp = (arp_pkt *)(frame + sizeof(eth_hdr));
   arp->htype = htons(1);
   arp->ptype = htons(0x0800);
   arp->hlen = 6;
@@ -237,10 +235,6 @@ void e1k_send_arp_request(uint8_t src_ip[4], uint8_t target_ip[4]) {
   memset(arp->target_mac, 0x00, 6);
   memcpy(arp->target_ip, target_ip, 4);
 
-  size_t frame_len = sizeof(eth_hdr) + sizeof(arp_pkt);
-  if (frame_len < 60)
-    frame_len = 60;
-
   INFO("E1K", "Sending ARP request: who has %d.%d.%d.%d ? tell %d.%d.%d.%d",
        target_ip[0], target_ip[1], target_ip[2], target_ip[3], src_ip[0],
        src_ip[1], src_ip[2], src_ip[3]);
@@ -249,4 +243,6 @@ void e1k_send_arp_request(uint8_t src_ip[4], uint8_t target_ip[4]) {
   if (r != 0) {
     INFO("E1K", "e1k_send failed with %d", r);
   }
+
+  kfree(frame);
 }

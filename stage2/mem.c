@@ -147,13 +147,16 @@ void try_split_block(block_header_t *block, uint32_t want_size) {
     cur = cur->next;
   }
   new_hdr->next = cur;
-  if (prev) prev->next = new_hdr;
-  else free_list_head = new_hdr;
+  if (prev)
+    prev->next = new_hdr;
+  else
+    free_list_head = new_hdr;
 }
 
 void *kmalloc(uint32_t bytes) {
   const uintptr_t ALIGN = 8;
-  if (bytes == 0) return NULL;
+  if (bytes == 0)
+    return NULL;
   uintptr_t want_size = (uintptr_t)bytes;
   want_size = align_up_uintptr(want_size, ALIGN);
 
@@ -169,7 +172,8 @@ void *kmalloc(uint32_t bytes) {
     return payload;
   }
 
-  uintptr_t hdr_addr = align_up_uintptr(bump_next, ALIGN); /* align header for safety */
+  uintptr_t hdr_addr =
+      align_up_uintptr(bump_next, ALIGN); /* align header for safety */
   uintptr_t payload_addr = hdr_addr + sizeof(block_header_t);
   uintptr_t new_bump = payload_addr + want_size;
 
@@ -201,9 +205,11 @@ int try_coalesce_adjacent(block_header_t *a, block_header_t *b) {
 }
 
 void kfree(void *loc) {
-  if (loc == NULL) return;
+  if (loc == NULL)
+    return;
 
-  block_header_t *block = (block_header_t *)((uintptr_t)loc - sizeof(block_header_t));
+  block_header_t *block =
+      (block_header_t *)((uintptr_t)loc - sizeof(block_header_t));
 
   uintptr_t block_addr = (uintptr_t)block;
   if ((block_addr < free_ram) || (block_addr >= free_ram_end)) {
@@ -222,8 +228,10 @@ void kfree(void *loc) {
   }
 
   block->next = cur;
-  if (prev) prev->next = block;
-  else free_list_head = block;
+  if (prev)
+    prev->next = block;
+  else
+    free_list_head = block;
 
   if (prev) {
     block_header_t *scan_prev = NULL;
