@@ -9,6 +9,8 @@
 #include "fat16.h"
 #include "mem.h"
 #include "utils.h"
+#include "dev/pci.h"
+#include "dev/e1k.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -39,14 +41,18 @@ void loader_start(void) {
   uint16_t entry_count = *E820_ENTRY_COUNT_ADDR;
   init_alloc(entry_count, mem_map);
 
+  pci_enumerate();
+  uint8_t src_ip[4] = {10, 0, 2, 15};
+  uint8_t target_ip[4] = {10, 0, 2, 2};
+  STI();
+  e1k_send_arp_request(src_ip, target_ip);
+
   fat16_scan(0);
 
 #ifdef ALLOC_DBG
   INFO("MAIN", "malloc called %d times, free called %d times", malloc_calls,
        free_calls);
 #endif
-
-  STI()
 
   while (1) {
   }

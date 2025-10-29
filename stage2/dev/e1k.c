@@ -7,6 +7,8 @@
 #include "net/arp.h"
 #include "net/eth.h"
 #include "utils.h"
+#include "cpu/interrupts/irq.h"
+#include "cpu/pic/pic.h"
 
 nic_descriptor nic_e1k;
 
@@ -103,6 +105,19 @@ void e1k_tx_init(void) {
   e1k_write(E1K_TCTL, tctl);
 
   e1k_write(E1K_TIPG, 0x0060200A);
+}
+
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+void handler(registers_t *r) {
+  INFO("E1K", "INTERRUPT GOT!!!");
+  HALT();
+}
+
+void e1k_rx_init(void) {
+  install_irq(nic_e1k.desc.irq, handler);
+  e1k_write(E1K_REG_IMS, 0x1F6DC);
+  e1k_read(0xc0);
+  pic_clear_mask(nic_e1k.desc.irq);
 }
 
 int e1k_send(void *frame, size_t len) {
@@ -214,6 +229,7 @@ void e1k_init(nic_descriptor nic_desc) {
        nic_e1k.mac[5]);
 
   e1k_tx_init();
+  e1k_rx_init();
 }
 
 void e1k_send_arp_request(uint8_t src_ip[4], uint8_t target_ip[4]) {

@@ -11,6 +11,7 @@
 #define E1K_EERD_START (1 << 0)
 #define E1K_EERD_DONE (1 << 4)
 #define E1K_REG_EECD 0x0010
+#define E1K_REG_IMS 0x00D0
 #define E1K_EECD_EE_PRES (1 << 8)
 #define E1K_TDBAL 0x3800
 #define E1K_TDBAH 0x3804
