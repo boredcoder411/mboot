@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+#define MBR_SIG 0xAA55
+
 typedef struct {
   uint8_t status;
   uint8_t first_chs[3];

@@ -10,6 +10,14 @@ bool strncmp(const char *a, const char *b, size_t n) {
   return true;
 }
 
+int strlen(char *s) {
+  int i = 0;
+  while (s[i] != '\0') {
+    i++;
+  }
+  return i;
+}
+
 void hexdump(void *data, size_t size) {
   uint8_t *ptr = (uint8_t *)data;
   for (size_t i = 0; i < size; i++) {

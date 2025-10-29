@@ -7,6 +7,11 @@
 uintptr_t free_ram;
 uintptr_t free_ram_end;
 
+#ifdef ALLOC_DBG
+extern int malloc_calls;
+extern int free_calls;
+#endif
+
 inline uintptr_t align_up_uintptr(uintptr_t x, uintptr_t align) {
   return (x + (align - 1)) & ~(align - 1);
 }
@@ -154,6 +159,9 @@ void try_split_block(block_header_t *block, uint32_t want_size) {
 }
 
 void *kmalloc(uint32_t bytes) {
+#ifdef ALLOC_DBG
+  malloc_calls++;
+#endif
   const uintptr_t ALIGN = 8;
   if (bytes == 0)
     return NULL;
@@ -205,6 +213,9 @@ int try_coalesce_adjacent(block_header_t *a, block_header_t *b) {
 }
 
 void kfree(void *loc) {
+#ifdef ALLOC_DBG
+  free_calls++;
+#endif
   if (loc == NULL)
     return;
 

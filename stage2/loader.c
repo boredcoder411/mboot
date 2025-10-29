@@ -3,40 +3,24 @@
 #include "cpu/interrupts/isr.h"
 #include "cpu/pic/pic.h"
 #include "cpu/pit/pit.h"
-#include "dev/disk.h"
 #include "dev/keyboard.h"
 #include "dev/serial.h"
 #include "dev/vga.h"
 #include "fs.h"
-#include "mbr.h"
 #include "mem.h"
 #include "utils.h"
 #include <stdbool.h>
 #include <stdint.h>
 
-#ifdef CUBE_DEMO
-#include "cube.c"
-#endif
-
-#ifdef TIME_DEMO
-#include "psf.h"
-#include "time.c"
-#endif
-
-#ifdef PSF_DEMO
-#include "psf.h"
-#endif
-
-#ifdef E1K_DEMO
-#include "dev/e1k.h"
-#include "dev/pci.h"
-#endif
-
 extern void enable_fpu(void);
 
 #define E820_TABLE_ADDR ((e820_entry_t *)0x9000)
 #define E820_ENTRY_COUNT_ADDR ((uint16_t *)0x8E00)
-#define MBR_ADDR ((mbr_t *)0x7C00)
+
+#ifdef ALLOC_DBG
+int malloc_calls;
+int free_calls;
+#endif
 
 void loader_start(void) {
   for (int i = 0; i < IRQs; ++i) {
@@ -51,58 +35,15 @@ void loader_start(void) {
   install_keyboard();
   remap_vga_dac();
 
-#if defined(CUBE_DEMO) || defined(TIME_DEMO)
-  install_irq(0, pit_handler);
-  pic_clear_mask(0);
-#endif
-
   e820_entry_t *mem_map = E820_TABLE_ADDR;
   uint16_t entry_count = *E820_ENTRY_COUNT_ADDR;
   init_alloc(entry_count, mem_map);
 
-  mbr_t *mbr = MBR_ADDR;
-  int boot_index;
-  for (int i = 0; i < 4; ++i) {
-    if (mbr->partitions[i].type == 0xEF) {
-      boot_index = i;
-    }
-  }
-  if (boot_index < 0) {
-    ERROR("MAIN", "couldn't find EFI partition (type 0xEF)");
-    HALT();
-  }
+  fat16_scan(0);
 
-  wad_header_t *wad = kmalloc(4096);
-  ata_lba_read(mbr->partitions[boot_index].first_lba, 4, wad, 0);
-
-#if defined(PSF_DEMO) || defined(TIME_DEMO)
-  psf_header_t *psf = find_file("font.psf", wad);
-  if (!psf || psf->magic != PSF1_FONT_MAGIC) {
-    ERROR("MAIN", "invalid or missing PSF file");
-    HALT();
-  }
-  uint8_t *glyphs = (uint8_t *)(psf + 1);
-  glyph_init(glyphs);
-#endif
-
-#ifdef PSF_DEMO
-  display_string("Hello, World!", VGA_WHITE);
-#endif
-
-#ifdef IMF_DEMO
-  imf_t *imf_file = find_file("icon.imf", wad);
-  if (imf_file) {
-    display_imf(imf_file, 0, 0);
-  } else {
-    ERROR("MAIN", "missing icon.imf");
-  }
-#endif
-
-#ifdef E1K_DEMO
-  pci_enumerate();
-  uint8_t src_ip[4] = {10, 0, 2, 15};
-  uint8_t target_ip[4] = {10, 0, 2, 2};
-  e1k_send_arp_request(src_ip, target_ip);
+#ifdef ALLOC_DBG
+  INFO("MAIN", "malloc called %d times, free called %d times", malloc_calls,
+       free_calls);
 #endif
 
   STI()

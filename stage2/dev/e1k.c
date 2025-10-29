@@ -14,9 +14,7 @@ static e1k_tx_desc_t tx_ring[NUM_TX_DESC] __attribute__((aligned(16)));
 static uint8_t tx_bufs[NUM_TX_DESC][TX_BUF_SIZE] __attribute__((aligned(16)));
 static uint32_t tx_tail = 0;
 
-static inline int e1k_is_mmio(void) {
-  return !(nic_e1k.desc.bar[0] & 0x1);
-}
+static inline int e1k_is_mmio(void) { return !(nic_e1k.desc.bar[0] & 0x1); }
 
 inline void e1k_write(uint32_t reg, uint32_t val) {
   if (e1k_is_mmio()) {
@@ -254,4 +252,3 @@ void e1k_send_arp_request(uint8_t src_ip[4], uint8_t target_ip[4]) {
 
   kfree(frame);
 }
-

@@ -8,11 +8,10 @@ CFLAGS = -target i386-elf -ffreestanding -fno-pic -fno-pie -mno-red-zone \
 LDFLAGS = -m elf_i386 -T link.ld -nostdlib -static --gc-sections -o kernel.elf
 
 BUILD = build
-IMAGE = image.img
 
 all: stage2 stage1 image
 
-CFLAGS += -DE1K_DEMO
+CFLAGS += -DE1K_DEMO -DALLOC_DBG
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -67,45 +66,23 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 		$(BUILD)/rtc.o \
 		$(BUILD)/pci.o \
 		$(BUILD)/pci_devices.o \
-		$(BUILD)/e1k.o
+		$(BUILD)/e1k.o \
 	
 	$(OBJCOPY) --only-keep-debug kernel.elf kernel.sym
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
 
-image: stage1 stage2 boot.bin assets.wad mkpart wpart
-	@if [[ ! -f boot.bin ]]; then \
-		echo "Error: boot.bin not found."; \
-		exit 1; \
-	fi
-	@if [[ ! -f assets.wad ]]; then \
-		echo "Error: assets.wad not found."; \
-		exit 1; \
-	fi
-	dd if=/dev/zero of=$(IMAGE) bs=1M count=10
-	dd if=boot.bin of=$(IMAGE) conv=notrunc
-	$(BUILD)/mkpart $(IMAGE)
-	$(BUILD)/wpart $(IMAGE) 2 assets.wad
-	@echo "Disk image created! Use xxd $(IMAGE) | less to inspect"
-
-wad_tool: tools/wad_tool.c | $(BUILD)
-	gcc -o $(BUILD)/wad_tool tools/wad_tool.c -Iinc/
-
-mkpart: tools/mkpart.c | $(BUILD)
-	gcc -o $(BUILD)/mkpart tools/mkpart.c -Iinc/
+image:
+	@./image.sh
 
 psf: tools/psf.c | $(BUILD)
 	gcc -o $(BUILD)/psf tools/psf.c -Iinc/ $$(pkg-config --cflags --libs libpng)
 
-wpart: tools/wpart.c | $(BUILD)
-	gcc -o $(BUILD)/wpart tools/wpart.c -Iinc/
-
 imf: tools/imf.c | $(BUILD)
 	gcc -o $(BUILD)/imf tools/imf.c -Iinc/ $$(pkg-config --cflags --libs libpng)
 
-assets.wad: psf wad_tool imf | $(BUILD)
+file_transforms: psf imf | $(BUILD)
 	$(BUILD)/psf test_files/font.png $(BUILD)/font.psf
 	$(BUILD)/imf test_files/icon.png $(BUILD)/icon.imf --rle
-	$(BUILD)/wad_tool pack assets.wad IWAD $(BUILD)/font.psf $(BUILD)/icon.imf test_files/test.txt
 
 format:
 	@find . -type f \( -name "*.c" -o -name "*.h" \) -exec clang-format -i {} +
@@ -113,9 +90,8 @@ format:
 clean:
 	rm -rf $(BUILD)
 	rm -f *.bin
-	rm -f $(IMAGE)
 	rm -f kernel.sym
 	rm -f kernel.elf
-	rm -f assets.wad
+	rm -f image.img
 
-.PHONY: all clean stage1 stage2 image wad_tool mkpart psf wpart imf format
+.PHONY: all clean stage1 stage2 image psf imf file_transforms format
