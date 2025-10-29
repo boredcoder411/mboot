@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dev/nic.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -42,7 +43,6 @@ typedef struct {
   uint16_t special;
 } __attribute__((packed, aligned(16))) e1k_tx_desc_t;
 
-void e1k_init(uint8_t bus, uint8_t device, uint8_t func, uint16_t vendor,
-              uint16_t device_id);
+void e1k_init(nic_descriptor nic_desc);
 int e1k_send(void *frame, size_t len);
 void e1k_send_arp_request(uint8_t src_ip[4], uint8_t target_ip[4]);
