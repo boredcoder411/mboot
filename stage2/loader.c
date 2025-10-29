@@ -6,7 +6,7 @@
 #include "dev/keyboard.h"
 #include "dev/serial.h"
 #include "dev/vga.h"
-#include "fs.h"
+#include "fat16.h"
 #include "mem.h"
 #include "utils.h"
 #include <stdbool.h>

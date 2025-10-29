@@ -19,7 +19,7 @@ $(BUILD):
 stage1: stage1/boot.asm | $(BUILD)
 	nasm -f bin stage1/boot.asm -o boot.bin
 
-stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c stage2/io.c stage2/dev/disk.c stage2/dev/serial.c stage2/fs.c stage2/cpu/interrupts/idt.c stage2/cpu/interrupts/isr.asm stage2/cpu/interrupts/isr.c stage2/cpu/interrupts/irq.asm stage2/cpu/interrupts/irq.c stage2/cpu/pic/pic.c stage2/cpu/pit/pit.c stage2/dev/keyboard.c stage2/mem.c stage2/dev/rtc.c stage2/dev/pci.c stage2/dev/pci_devices.c stage2/dev/e1k.c | $(BUILD)
+stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c stage2/io.c stage2/dev/disk.c stage2/dev/serial.c stage2/fat16.c stage2/cpu/interrupts/idt.c stage2/cpu/interrupts/isr.asm stage2/cpu/interrupts/isr.c stage2/cpu/interrupts/irq.asm stage2/cpu/interrupts/irq.c stage2/cpu/pic/pic.c stage2/cpu/pit/pit.c stage2/dev/keyboard.c stage2/mem.c stage2/dev/rtc.c stage2/dev/pci.c stage2/dev/pci_devices.c stage2/dev/e1k.c | $(BUILD)
 	nasm -f elf stage2/start_loader.asm -o $(BUILD)/start_loader.o
 	nasm -f elf stage2/cpu/interrupts/idt.asm -o $(BUILD)/idt_s.o
 	nasm -f elf stage2/cpu/interrupts/isr.asm -o $(BUILD)/isr_s.o
@@ -31,7 +31,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 	$(CC) $(CFLAGS) stage2/io.c -o $(BUILD)/io.o
 	$(CC) $(CFLAGS) stage2/dev/disk.c -o $(BUILD)/disk.o
 	$(CC) $(CFLAGS) stage2/dev/serial.c -o $(BUILD)/serial.o
-	$(CC) $(CFLAGS) stage2/fs.c -o $(BUILD)/fs.o
+	$(CC) $(CFLAGS) stage2/fat16.c -o $(BUILD)/fat16.o
 	$(CC) $(CFLAGS) stage2/cpu/interrupts/idt.c -o $(BUILD)/idt.o
 	$(CC) $(CFLAGS) stage2/cpu/interrupts/isr.c -o $(BUILD)/isr.o
 	$(CC) $(CFLAGS) stage2/cpu/interrupts/irq.c -o $(BUILD)/irq.o
@@ -52,7 +52,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 		$(BUILD)/serial.o \
 		$(BUILD)/io.o \
 		$(BUILD)/disk.o \
-		$(BUILD)/fs.o \
+		$(BUILD)/fat16.o \
 		$(BUILD)/idt.o \
 		$(BUILD)/idt_s.o \
 		$(BUILD)/isr.o \

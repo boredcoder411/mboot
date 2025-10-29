@@ -1,4 +1,4 @@
-#include "fs.h"
+#include "fat16.h"
 #include "dev/disk.h"
 #include "dev/serial.h"
 #include "mbr.h"
