@@ -6,6 +6,15 @@
 #define DIR_ATTR_LFN 0x0F
 #define DIR_ATTR_DIRECTORY 0x10
 #define SECTOR_SIZE 512
+#define MAX_OPEN_FILES 8
+
+typedef struct {
+  char path[256];
+  uint16_t start_cluster;
+  uint32_t size;
+  uint32_t offset;
+  bool used;
+} fat16_file_t;
 
 typedef struct {
   uint8_t jmpBoot[3];

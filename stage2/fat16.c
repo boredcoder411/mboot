@@ -6,6 +6,11 @@
 #include "utils.h"
 #include "vfs.h"
 
+static vfs_driver_t fat16_driver;
+static BPB_t g_bpb;
+static uint32_t g_part_offset = 0;
+static fat16_file_t open_files[MAX_OPEN_FILES];
+
 bool read_bytes(uint32_t part_offset, void *buf, size_t len) {
   uint32_t start_lba = part_offset / SECTOR_SIZE;
   uint32_t end_lba = (part_offset + len - 1) / SECTOR_SIZE;
@@ -174,22 +179,6 @@ void read_directory(const BPB_t *bpb, uint32_t part_offset,
 
   kfree(buffer);
 }
-
-#define SECTOR_SIZE 512
-#define MAX_OPEN_FILES 8
-
-typedef struct {
-  char path[256];
-  uint16_t start_cluster;
-  uint32_t size;
-  uint32_t offset;
-  bool used;
-} fat16_file_t;
-
-static vfs_driver_t fat16_driver;
-static BPB_t g_bpb;
-static uint32_t g_part_offset = 0;
-static fat16_file_t open_files[MAX_OPEN_FILES];
 
 static inline uint32_t cluster_offset(uint16_t cluster) {
   uint32_t cluster_size = g_bpb.BytsPerSec * g_bpb.SecPerClus;
