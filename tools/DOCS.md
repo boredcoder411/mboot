@@ -1,3 +1,6 @@
+# NOTE
+this directory contains some tools which are being deprecated, notably mkpart, wad_tool and wpart as a result of my effort to sunset support for wadfs and replace it with fat16.
+
 # tools
 this directory just contains some tools I wrote to make developing this less of a pain
 
