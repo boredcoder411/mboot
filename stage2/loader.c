@@ -3,14 +3,15 @@
 #include "cpu/interrupts/isr.h"
 #include "cpu/pic/pic.h"
 #include "cpu/pit/pit.h"
+#include "dev/e1k.h"
 #include "dev/keyboard.h"
+#include "dev/pci.h"
 #include "dev/serial.h"
 #include "dev/vga.h"
 #include "fat16.h"
 #include "mem.h"
 #include "utils.h"
-#include "dev/pci.h"
-#include "dev/e1k.h"
+#include "vfs.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -47,7 +48,9 @@ void loader_start(void) {
   STI();
   e1k_send_arp_request(src_ip, target_ip);
 
-  fat16_scan(0);
+  fat16_init();
+
+  read_file("/hi.txt");
 
 #ifdef ALLOC_DBG
   INFO("MAIN", "malloc called %d times, free called %d times", malloc_calls,

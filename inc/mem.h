@@ -21,6 +21,6 @@ typedef struct block_header {
 
 void init_alloc(uint16_t count, e820_entry_t *entries);
 void *memset(void *buf, uint8_t c, size_t n);
-void *memcpy(void *dst, void *src, size_t n);
+void *memcpy(void *dst, const void *src, size_t n);
 void *kmalloc(uint32_t bytes);
 void kfree(void *loc);

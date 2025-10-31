@@ -4,6 +4,7 @@
 #include "mbr.h"
 #include "mem.h"
 #include "utils.h"
+#include "vfs.h"
 
 bool read_bytes(uint32_t part_offset, void *buf, size_t len) {
   uint32_t start_lba = part_offset / SECTOR_SIZE;
@@ -31,14 +32,13 @@ uint32_t BPB_Data_addr(const BPB_t *bpb) {
 }
 
 uint16_t get_next_cluster(uint32_t part_offset, const BPB_t *bpb,
-                                 uint16_t cluster) {
+                          uint16_t cluster) {
   uint16_t val;
   read_bytes(part_offset + BPB_FAT_addr(bpb) + cluster * 2, &val, sizeof(val));
   return val;
 }
 
-void get_lfn_name(lfn_entry_t *lfn_entries, int count, char *out,
-                         int outsize) {
+void get_lfn_name(lfn_entry_t *lfn_entries, int count, char *out, int outsize) {
   int pos = 0;
   for (int i = count - 1; i >= 0; i--) {
     for (int j = 0; j < 5; j++) {
@@ -64,7 +64,7 @@ void get_lfn_name(lfn_entry_t *lfn_entries, int count, char *out,
 }
 
 void get_file_name(dir_t *dir, lfn_entry_t *lfn_entries, int lfn_count,
-                          char *out, int outsize) {
+                   char *out, int outsize) {
   if (lfn_count > 0) {
     get_lfn_name(lfn_entries, lfn_count, out, outsize);
   } else {
@@ -93,7 +93,7 @@ void get_file_name(dir_t *dir, lfn_entry_t *lfn_entries, int lfn_count,
 }
 
 void read_directory(const BPB_t *bpb, uint32_t part_offset,
-                           uint16_t start_cluster, const char *prefix) {
+                    uint16_t start_cluster, const char *prefix) {
   uint32_t cluster_size = bpb->BytsPerSec * bpb->SecPerClus;
   uint8_t *buffer = kmalloc(cluster_size);
   if (!buffer)
@@ -175,43 +175,228 @@ void read_directory(const BPB_t *bpb, uint32_t part_offset,
   kfree(buffer);
 }
 
-void fat16_scan(uint32_t disk_lba_start) {
-  uint8_t *sector = kmalloc(SECTOR_SIZE);
-  ata_lba_read(disk_lba_start, 1, sector, 0);
+#define SECTOR_SIZE 512
+#define MAX_OPEN_FILES 8
 
-  uint16_t sig = *(uint16_t *)(sector + 510);
-  if (sig != MBR_SIG) {
-    INFO("FAT16", "No valid MBR");
+typedef struct {
+  char path[256];
+  uint16_t start_cluster;
+  uint32_t size;
+  uint32_t offset;
+  bool used;
+} fat16_file_t;
+
+static vfs_driver_t fat16_driver;
+static BPB_t g_bpb;
+static uint32_t g_part_offset = 0;
+static fat16_file_t open_files[MAX_OPEN_FILES];
+
+static inline uint32_t cluster_offset(uint16_t cluster) {
+  uint32_t cluster_size = g_bpb.BytsPerSec * g_bpb.SecPerClus;
+  return g_part_offset + BPB_Data_addr(&g_bpb) + (cluster - 2) * cluster_size;
+}
+
+static bool find_file_in_dir(uint16_t start_cluster, const char *target_name,
+                             dir_t *out_dir) {
+  uint32_t cluster_size = g_bpb.BytsPerSec * g_bpb.SecPerClus;
+  uint8_t *buffer = kmalloc(cluster_size);
+  if (!buffer)
+    return false;
+
+  uint16_t cluster = start_cluster;
+  do {
+    uint32_t offset = (cluster == 0) ? (g_part_offset + BPB_Root_addr(&g_bpb))
+                                     : cluster_offset(cluster);
+
+    if (!read_bytes(offset, buffer, cluster_size))
+      break;
+
+    int entries = cluster_size / sizeof(dir_t);
+    lfn_entry_t lfn_entries[20];
+    int lfn_count = 0;
+
+    for (int i = 0; i < entries; i++) {
+      dir_t *dir = (dir_t *)(buffer + i * sizeof(dir_t));
+      if (dir->Name[0] == 0)
+        break;
+      if (dir->Name[0] == 0xE5) {
+        lfn_count = 0;
+        continue;
+      }
+
+      if (dir->Attr == DIR_ATTR_LFN) {
+        if (lfn_count < 20)
+          lfn_entries[lfn_count++] = *(lfn_entry_t *)dir;
+        continue;
+      }
+
+      char name[256];
+      get_file_name(dir, lfn_entries, lfn_count, name, sizeof(name));
+      lfn_count = 0;
+
+      if (!(dir->Attr & DIR_ATTR_DIRECTORY)) {
+        if (strcasecmp(name, target_name) == 0) {
+          memcpy(out_dir, dir, sizeof(dir_t));
+          kfree(buffer);
+          return true;
+        }
+      }
+    }
+
+    if (start_cluster == 0)
+      break;
+
+    cluster = get_next_cluster(g_part_offset, &g_bpb, cluster);
+  } while (cluster < 0xFFF8);
+
+  kfree(buffer);
+  return false;
+}
+
+static int fat16_open(const char *path) {
+  if (!path || !*path)
+    return -1;
+
+  const char *fname = path;
+  while (*fname == '/')
+    fname++;
+
+  dir_t dir;
+  if (!find_file_in_dir(0, fname, &dir)) {
+    WARN("FAT16", "file '%s' not found", fname);
+    return -1;
+  }
+
+  for (int i = 0; i < MAX_OPEN_FILES; i++) {
+    if (!open_files[i].used) {
+      open_files[i].used = true;
+      memcpy(open_files[i].path, fname, sizeof(open_files[i].path) - 1);
+      open_files[i].path[sizeof(open_files[i].path) - 1] = '\0';
+      open_files[i].start_cluster = dir.FstClusLO;
+      open_files[i].size = dir.FileSize;
+      open_files[i].offset = 0;
+      INFO("FAT16", "opened '%s' (cluster=%u size=%u)", fname, dir.FstClusLO,
+           dir.FileSize);
+      return i;
+    }
+  }
+
+  ERROR("FAT16", "too many open files");
+  return -1;
+}
+
+static int fat16_close(int fd) {
+  if (fd < 0 || fd >= MAX_OPEN_FILES || !open_files[fd].used)
+    return -1;
+  open_files[fd].used = false;
+  INFO("FAT16", "closed '%s'", open_files[fd].path);
+  return 0;
+}
+
+static int fat16_read(int fd, void *buffer, size_t size) {
+  if (fd < 0 || fd >= MAX_OPEN_FILES || !open_files[fd].used)
+    return -1;
+  if (size == 0)
+    return 0;
+
+  fat16_file_t *file = &open_files[fd];
+  if (file->offset >= file->size)
+    return 0;
+
+  uint32_t cluster_size = g_bpb.BytsPerSec * g_bpb.SecPerClus;
+  uint32_t remaining = file->size - file->offset;
+  if (size > remaining)
+    size = remaining;
+
+  uint16_t cluster = file->start_cluster;
+  uint32_t skip = file->offset;
+  uint32_t skip_clusters = skip / cluster_size;
+  uint32_t offset_in_cluster = skip % cluster_size;
+
+  for (uint32_t i = 0; i < skip_clusters; i++) {
+    cluster = get_next_cluster(g_part_offset, &g_bpb, cluster);
+    if (cluster >= 0xFFF8)
+      return -1;
+  }
+
+  uint8_t *tmp = kmalloc(cluster_size);
+  if (!tmp)
+    return -1;
+
+  uint8_t *dst = buffer;
+  size_t bytes_read = 0;
+  size_t to_read = size;
+
+  while (to_read > 0 && cluster < 0xFFF8) {
+    if (!read_bytes(cluster_offset(cluster), tmp, cluster_size))
+      break;
+
+    size_t copy = cluster_size - offset_in_cluster;
+    if (copy > to_read)
+      copy = to_read;
+
+    memcpy(dst + bytes_read, tmp + offset_in_cluster, copy);
+    bytes_read += copy;
+    to_read -= copy;
+    offset_in_cluster = 0;
+
+    if (to_read > 0)
+      cluster = get_next_cluster(g_part_offset, &g_bpb, cluster);
+  }
+
+  kfree(tmp);
+  file->offset += bytes_read;
+  return (int)bytes_read;
+}
+
+void fat16_init() {
+  memset(open_files, 0, sizeof(open_files));
+
+  uint8_t *mbr = kmalloc(SECTOR_SIZE);
+  if (!mbr)
+    return;
+
+  if (!read_bytes(0, mbr, SECTOR_SIZE)) {
+    kfree(mbr);
     return;
   }
 
-  partition_entry_t parts[4];
-  memcpy(parts, sector + 0x1BE, sizeof(parts));
-  int fat_index = -1;
+  uint32_t start_lba = 0;
   for (int i = 0; i < 4; i++) {
-    if (parts[i].type == 0x06) {
-      fat_index = i;
+    uint8_t *entry = mbr + 446 + i * 16;
+    uint8_t type = entry[4];
+    if (type == 0x04 || type == 0x06 || type == 0x0E) {
+      memcpy(&start_lba, entry + 8, 4);
       break;
     }
   }
-  if (fat_index < 0) {
-    INFO("FAT16", "No FAT16 partition found");
+  kfree(mbr);
+
+  if (!start_lba) {
+    ERROR("FAT16", "no FAT16 partition found");
     return;
   }
 
-  uint32_t part_lba = parts[fat_index].first_lba;
-  uint32_t part_offset = part_lba * SECTOR_SIZE;
-  INFO("FAT16", "FAT16 partition @ LBA %u (offset %u bytes)", part_lba,
-       part_offset);
+  g_part_offset = start_lba * SECTOR_SIZE;
 
-  BPB_t bpb;
-  read_bytes(part_offset, &bpb, sizeof(bpb));
-  INFO("FAT16",
-       "BytsPerSec=%u SecPerClus=%u NumFATs=%u RootEntCnt=%u FATSz16=%u",
-       bpb.BytsPerSec, bpb.SecPerClus, bpb.NumFATs, bpb.RootEntCnt,
-       bpb.FATSz16);
+  uint8_t *sector0 = kmalloc(SECTOR_SIZE);
+  if (!sector0)
+    return;
+  if (!read_bytes(g_part_offset, sector0, SECTOR_SIZE)) {
+    kfree(sector0);
+    return;
+  }
 
-  read_directory(&bpb, part_offset, 0, "");
+  memcpy(&g_bpb, sector0, sizeof(BPB_t));
+  kfree(sector0);
 
-  kfree(sector);
+  INFO("FAT16", "initialized: part_offset=%u BytsPerSec=%u SecPerClus=%u",
+       g_part_offset, g_bpb.BytsPerSec, g_bpb.SecPerClus);
+
+  fat16_driver.open_file = fat16_open;
+  fat16_driver.close_file = fat16_close;
+  fat16_driver.read_file = fat16_read;
+  register_vfs_driver(&fat16_driver);
+
+  INFO("FAT16", "registered FAT16 driver with VFS");
 }

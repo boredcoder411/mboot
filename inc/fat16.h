@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #define DIR_ATTR_LFN 0x0F
@@ -49,4 +50,4 @@ typedef struct {
   uint16_t Name3[2];
 } __attribute__((packed)) lfn_entry_t;
 
-void fat16_scan(uint32_t disk_lba_start);
+void fat16_init();

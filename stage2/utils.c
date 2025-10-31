@@ -18,6 +18,28 @@ int strlen(const char *s) {
   return i;
 }
 
+int tolower(int c) {
+  if (c >= 'A' && c <= 'Z')
+    return c + ('a' - 'A');
+  return c;
+}
+
+int strcasecmp(const char *s1, const char *s2) {
+  unsigned char c1, c2;
+
+  if (!s1 || !s2)
+    return (s1 == s2) ? 0 : (s1 ? 1 : -1);
+
+  while (*s1 && *s2) {
+    c1 = (unsigned char)tolower((unsigned char)*s1++);
+    c2 = (unsigned char)tolower((unsigned char)*s2++);
+    if (c1 != c2)
+      return c1 - c2;
+  }
+
+  return (unsigned char)*s1 - (unsigned char)*s2;
+}
+
 void hexdump(void *data, size_t size) {
   uint8_t *ptr = (uint8_t *)data;
   for (size_t i = 0; i < size; i++) {

@@ -1,4 +1,6 @@
 #include "dev/e1k.h"
+#include "cpu/interrupts/irq.h"
+#include "cpu/pic/pic.h"
 #include "dev/nic.h"
 #include "dev/pci.h"
 #include "dev/serial.h"
@@ -7,8 +9,6 @@
 #include "net/arp.h"
 #include "net/eth.h"
 #include "utils.h"
-#include "cpu/interrupts/irq.h"
-#include "cpu/pic/pic.h"
 
 nic_descriptor nic_e1k;
 
