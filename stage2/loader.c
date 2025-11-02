@@ -50,7 +50,12 @@ void loader_start(void) {
 
   fat16_init();
 
-  read_file("/hi.txt");
+  int file = open_file("/hi.txt");
+  int size = fat16_get_size(file);
+  void *buf = kmalloc(size);
+  read_file(file, size, buf);
+  kfree(buf);
+  close_file(file);
 
 #ifdef ALLOC_DBG
   INFO("MAIN", "malloc called %d times, free called %d times", malloc_calls,

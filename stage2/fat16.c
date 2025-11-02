@@ -338,6 +338,10 @@ static int fat16_read(int fd, void *buffer, size_t size) {
   return (int)bytes_read;
 }
 
+int fat16_get_size(int fd) {
+  return open_files[fd].size;
+}
+
 void fat16_init() {
   memset(open_files, 0, sizeof(open_files));
 
