@@ -9,4 +9,6 @@ typedef struct {
 } vfs_driver_t;
 
 void register_vfs_driver(vfs_driver_t *drv);
-int read_file(const char *path);
+int open_file(const char *path);
+int close_file(int fd);
+int read_file(int fd, size_t size, void *dst);

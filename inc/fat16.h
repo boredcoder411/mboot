@@ -60,3 +60,4 @@ typedef struct {
 } __attribute__((packed)) lfn_entry_t;
 
 void fat16_init();
+int fat16_get_size(int fd);
