@@ -7,7 +7,7 @@
 #define HALT() asm("cli;hlt");
 #define CLI() asm("cli");
 #define STI() asm("sti");
-#define htons(x) ((((x)&0xFF) << 8) | ((x) >> 8))
+#define htons(x) ((((x) & 0xFF) << 8) | ((x) >> 8))
 #define ntohs(x) htons(x)
 #define strcmp(a, b) strncmp(a, b, strlen(a))
 

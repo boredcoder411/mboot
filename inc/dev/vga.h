@@ -8,7 +8,7 @@
 #define VIDEO_MEMORY (uint8_t *)0xA0000
 
 #define abs(x) ((x) < 0 ? -(x) : (x))
-#define VGA_INDEX(r, g, b) ((uint8_t)(((r)*36) + ((g)*6) + (b)))
+#define VGA_INDEX(r, g, b) ((uint8_t)(((r) * 36) + ((g) * 6) + (b)))
 
 #define VGA_BLACK VGA_INDEX(0, 0, 0)
 #define VGA_BLUE VGA_INDEX(0, 0, 3)
@@ -27,7 +27,7 @@
 #define VGA_YELLOW VGA_INDEX(5, 5, 0)
 #define VGA_WHITE VGA_INDEX(5, 5, 5)
 
-#define VGA_GRAY(n) ((uint8_t)(216 + ((n)&0x0F)))
+#define VGA_GRAY(n) ((uint8_t)(216 + ((n) & 0x0F)))
 
 void glyph_init(uint8_t *glyphs);
 void put_pixel(int x, int y, uint8_t color);
