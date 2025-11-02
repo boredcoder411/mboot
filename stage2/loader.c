@@ -8,6 +8,7 @@
 #include "dev/pci.h"
 #include "dev/serial.h"
 #include "dev/vga.h"
+#include "elf.h"
 #include "fat16.h"
 #include "mem.h"
 #include "utils.h"
@@ -50,12 +51,15 @@ void loader_start(void) {
 
   fat16_init();
 
-  int file = open_file("/hi.txt");
+  int file = open_file("/test.elf");
   int size = fat16_get_size(file);
   void *buf = kmalloc(size);
   read_file(file, size, buf);
+  load_elf(buf);
   kfree(buf);
   close_file(file);
+
+  INFO("MAIN", "if you see this message, the elf returned somehow.");
 
 #ifdef ALLOC_DBG
   INFO("MAIN", "malloc called %d times, free called %d times", malloc_calls,
