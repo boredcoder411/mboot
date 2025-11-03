@@ -1,5 +1,7 @@
 #include "cpu/interrupts/idt.h"
 
+extern void syscall_handler();
+
 idt_entry_t idt[IDT_ENTRIES];
 idt_ptr_t idt_ptr;
 
@@ -18,6 +20,8 @@ void idt_init() {
   for (int i = 0; i < IDT_ENTRIES; i++) {
     idt_set_gate(i, 0, 0, 0);
   }
+
+  idt_set_gate(0x80, (uint32_t)syscall_handler, 0x08, 0x8E);
 
   idt_load((uint32_t)&idt_ptr);
 }
