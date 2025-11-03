@@ -87,8 +87,8 @@ imf: tools/imf.c | $(BUILD)
 file_transforms: psf imf | $(BUILD)
 	$(BUILD)/psf test_files/font.png $(BUILD)/font.psf
 	$(BUILD)/imf test_files/icon.png $(BUILD)/icon.imf --rle
-	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -o $(BUILD)/test.o -c test_files/test.c
-	$(LD) $(BUILD)/test.o -m elf_i386 -static -o $(BUILD)/test.elf
+	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fPIE -o $(BUILD)/test.o -c test_files/test.c
+	$(LD) $(BUILD)/test.o -m elf_i386 -static -pie -o $(BUILD)/test.elf
 
 format:
 	@find . -type f \( -name "*.c" -o -name "*.h" \) -exec clang-format -i {} +
