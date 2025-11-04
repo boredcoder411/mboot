@@ -6,6 +6,7 @@ void outb(uint16_t port, uint8_t value) {
 
 void _start() {
   outb(0x3f8, 'a');
+  asm("int $0x80");
   while (1) {
   }
 }

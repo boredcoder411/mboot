@@ -1,6 +1,15 @@
 #include "cpu/interrupts/idt.h"
+#include "io.h"
+#include "dev/serial.h"
 
 extern void syscall_handler();
+
+void syscall_dispatch(registers_t *r) {
+  switch (r->eax) {
+    default:
+      INFO("SYSCALL", "called");
+  }
+}
 
 idt_entry_t idt[IDT_ENTRIES];
 idt_ptr_t idt_ptr;
