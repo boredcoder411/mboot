@@ -24,3 +24,4 @@ void *memset(void *buf, uint8_t c, size_t n);
 void *memcpy(void *dst, const void *src, size_t n);
 void *kmalloc(uint32_t bytes);
 void kfree(void *loc);
+uintptr_t align_up_uintptr(uintptr_t x, uintptr_t align);

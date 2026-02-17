@@ -12,12 +12,12 @@
 
 nic_descriptor nic_e1k;
 
-static e1k_tx_desc_t tx_ring[NUM_TX_DESC] E1K_TX_DESC_ALIGN;
-static uint8_t tx_bufs[NUM_TX_DESC][TX_BUF_SIZE] __attribute__((aligned(16)));
+static e1k_tx_desc_t *tx_ring = NULL;
+static uint8_t (*tx_bufs)[TX_BUF_SIZE] = NULL;
 static uint32_t tx_tail = 0;
 
-static e1k_rx_desc_t rx_ring[NUM_RX_DESC] E1K_RX_DESC_ALIGN;
-static uint8_t rx_bufs[NUM_RX_DESC][RX_BUF_SIZE] __attribute__((aligned(16)));
+static e1k_rx_desc_t *rx_ring = NULL;
+static uint8_t (*rx_bufs)[RX_BUF_SIZE] = NULL;
 static uint32_t rx_tail = 0;
 
 static inline int e1k_is_mmio(void) { return !(nic_e1k.desc.bar[0] & 0x1); }
@@ -84,11 +84,21 @@ static inline void e1k_mmio_post(void) {
 }
 
 void e1k_tx_init(void) {
-  memset(tx_ring, 0, sizeof(tx_ring));
+  // Allocate TX ring with 128-byte alignment
+  uintptr_t ring_addr = (uintptr_t)kmalloc(sizeof(e1k_tx_desc_t) * NUM_TX_DESC + 128);
+  uintptr_t aligned_ring = align_up_uintptr(ring_addr, 128);
+  tx_ring = (e1k_tx_desc_t *)aligned_ring;
+  
+  // Allocate TX buffers
+  tx_bufs = (uint8_t (*)[TX_BUF_SIZE])kmalloc(sizeof(uint8_t) * NUM_TX_DESC * TX_BUF_SIZE);
+  
+  INFO("E1K", "TX alloc: ring=0x%08x, bufs=0x%08x", (uint32_t)tx_ring, (uint32_t)tx_bufs);
+
+  memset(tx_ring, 0, sizeof(e1k_tx_desc_t) * NUM_TX_DESC);
 
   for (int i = 0; i < NUM_TX_DESC; i++) {
     memset(tx_bufs[i], 0, TX_BUF_SIZE);
-    tx_ring[i].addr = (uint64_t)&tx_bufs[i][0];
+    tx_ring[i].addr = (uint64_t)(uintptr_t)&tx_bufs[i][0];
     tx_ring[i].status = STATUS_DD;
   }
 
@@ -110,12 +120,22 @@ void e1k_tx_init(void) {
 
   e1k_write(E1K_TIPG, 0x0060200A);
 
-  INFO("E1K", "TX ring at 0x%08x, buf[0] at 0x%08x", (uint32_t)tx_ring,
-       (uint32_t)tx_bufs[0]);
+  INFO("E1K", "TX ring at 0x%08x (align=%d), buf[0] at 0x%08x", (uint32_t)tx_ring,
+       (uint32_t)tx_ring % 128, (uint32_t)tx_bufs[0]);
 }
 
 void e1k_rx_init(void) {
-  memset(rx_ring, 0, sizeof(rx_ring));
+  // Allocate RX ring with 128-byte alignment
+  uintptr_t ring_addr = (uintptr_t)kmalloc(sizeof(e1k_rx_desc_t) * NUM_RX_DESC + 128);
+  uintptr_t aligned_ring = align_up_uintptr(ring_addr, 128);
+  rx_ring = (e1k_rx_desc_t *)aligned_ring;
+  
+  // Allocate RX buffers
+  rx_bufs = (uint8_t (*)[RX_BUF_SIZE])kmalloc(sizeof(uint8_t) * NUM_RX_DESC * RX_BUF_SIZE);
+  
+  INFO("E1K", "RX alloc: ring=0x%08x, bufs=0x%08x", (uint32_t)rx_ring, (uint32_t)rx_bufs);
+
+  memset(rx_ring, 0, sizeof(e1k_rx_desc_t) * NUM_RX_DESC);
 
   for (int i = 0; i < NUM_RX_DESC; i++) {
     memset(rx_bufs[i], 0, RX_BUF_SIZE);

@@ -12,7 +12,7 @@ extern int malloc_calls;
 extern int free_calls;
 #endif
 
-inline uintptr_t align_up_uintptr(uintptr_t x, uintptr_t align) {
+uintptr_t align_up_uintptr(uintptr_t x, uintptr_t align) {
   return (x + (align - 1)) & ~(align - 1);
 }
 
