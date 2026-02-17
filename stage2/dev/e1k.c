@@ -12,9 +12,13 @@
 
 nic_descriptor nic_e1k;
 
-static e1k_tx_desc_t tx_ring[NUM_TX_DESC] __attribute__((aligned(16)));
+static e1k_tx_desc_t tx_ring[NUM_TX_DESC] E1K_TX_DESC_ALIGN;
 static uint8_t tx_bufs[NUM_TX_DESC][TX_BUF_SIZE] __attribute__((aligned(16)));
 static uint32_t tx_tail = 0;
+
+static e1k_rx_desc_t rx_ring[NUM_RX_DESC] E1K_RX_DESC_ALIGN;
+static uint8_t rx_bufs[NUM_RX_DESC][RX_BUF_SIZE] __attribute__((aligned(16)));
+static uint32_t rx_tail = 0;
 
 static inline int e1k_is_mmio(void) { return !(nic_e1k.desc.bar[0] & 0x1); }
 
@@ -105,19 +109,220 @@ void e1k_tx_init(void) {
   e1k_write(E1K_TCTL, tctl);
 
   e1k_write(E1K_TIPG, 0x0060200A);
+
+  INFO("E1K", "TX ring at 0x%08x, buf[0] at 0x%08x", (uint32_t)tx_ring,
+       (uint32_t)tx_bufs[0]);
+}
+
+void e1k_rx_init(void) {
+  memset(rx_ring, 0, sizeof(rx_ring));
+
+  for (int i = 0; i < NUM_RX_DESC; i++) {
+    memset(rx_bufs[i], 0, RX_BUF_SIZE);
+    // Ensure address is within 32-bit DMA range for compatibility
+    rx_ring[i].addr = (uint64_t)(uintptr_t)&rx_bufs[i][0];
+    rx_ring[i].status = 0;
+    rx_ring[i].length = 0;
+  }
+
+  uint32_t rdbal = (uint32_t)((uint64_t)rx_ring & 0xFFFFFFFF);
+  uint32_t rdbah = (uint32_t)((uint64_t)rx_ring >> 32);
+  e1k_write(E1K_RDBAL, rdbal);
+  e1k_write(E1K_RDBAH, rdbah);
+  e1k_write(E1K_RDLEN, NUM_RX_DESC * sizeof(e1k_rx_desc_t));
+
+  // RCTL: Configure receiver but don't enable yet
+  // SZ=0 (2KB buffers), BSEX=0 (legacy mode), SECRC=1 (strip CRC)
+  // SBP=1 (store bad packets), BAM=1 (broadcast accept)
+  uint32_t rctl = E1K_RCTL_SBP | E1K_RCTL_UPE | E1K_RCTL_MPE |
+                  E1K_RCTL_LBM_NONE | E1K_RCTL_RDMTS_HALF | E1K_RCTL_MO_3 |
+                  E1K_RCTL_BAM | E1K_RCTL_SECRC;
+  e1k_write(E1K_RCTL, rctl);
+
+  // Set head and tail pointers
+  e1k_write(E1K_RDH, 0);
+  e1k_write(E1K_RDT, NUM_RX_DESC - 1);  // All descriptors initially available
+
+  // Configure RXDCTL for immediate descriptor writeback
+  // Set WTHRESH=0 (immediate), HTHRESH=0, PTHRESH=0 for lowest latency
+  e1k_write(E1K_RXDCTL, 0);
+
+  rx_tail = 0;
+
+  // Small delay to let RX engine stabilize
+  for (volatile int i = 0; i < 1000; i++)
+    asm volatile("nop");
+
+  // Enable RXDCTL
+  uint32_t rxdctl = e1k_read(E1K_RXDCTL);
+  rxdctl |= E1K_RXDCTL_EN;
+  e1k_write(E1K_RXDCTL, rxdctl);
+
+  // Now enable the receiver
+  rctl |= E1K_RCTL_EN;
+  e1k_write(E1K_RCTL, rctl);
+
+  // Disable interrupt throttling for immediate interrupts
+  e1k_write(E1K_REG_ITR, 0);
+
+  // Post RX descriptors and ensure they're visible to hardware
+  e1k_write(E1K_RDT, NUM_RX_DESC - 1);
+  asm volatile("" ::: "memory");
+
+  uint32_t status = e1k_read(E1K_REG_STATUS);
+  uint32_t rdh_check = e1k_read(E1K_RDH);
+  uint32_t rdt_check = e1k_read(E1K_RDT);
+  uint32_t rctl_check = e1k_read(E1K_RCTL);
+  uint32_t rdbal_check = e1k_read(E1K_RDBAL);
+  uint32_t rdlen_check = e1k_read(E1K_RDLEN);
+
+  INFO("E1K", "RX init: RDBAL=0x%08x, RDBAH=0x%08x, RDLEN=%u", rdbal, rdbah,
+       NUM_RX_DESC * sizeof(e1k_rx_desc_t));
+  INFO("E1K", "RX check: STATUS=0x%08x, RDH=%u, RDT=%u, RCTL=0x%08x, RDLEN_chk=%u, RDBAL_chk=0x%08x",
+       status, rdh_check, rdt_check, rctl_check, rdlen_check, rdbal_check);
+  INFO("E1K", "RX ring at 0x%08x (align=%d), buf[0] at 0x%08x", (uint32_t)rx_ring,
+       (uint32_t)rx_ring % 128, (uint32_t)rx_bufs[0]);
+  INFO("E1K", "RX desc[0].addr = 0x%08x%08x, desc size=%d", 
+       (uint32_t)(rx_ring[0].addr >> 32),
+       (uint32_t)(rx_ring[0].addr & 0xFFFFFFFF),
+       (int)sizeof(e1k_rx_desc_t));
+}
+
+static void e1k_process_packet(uint8_t *data, uint16_t len) {
+  eth_hdr *eth = (eth_hdr *)data;
+
+  if (len < sizeof(eth_hdr))
+    return;
+
+  INFO("E1K", "RX packet: ethertype=0x%04x, len=%u", ntohs(eth->ethertype), len);
+
+  if (ntohs(eth->ethertype) == 0x0806) {
+    arp_pkt *arp = (arp_pkt *)(data + sizeof(eth_hdr));
+    if (len < sizeof(eth_hdr) + sizeof(arp_pkt))
+      return;
+
+    INFO("E1K", "ARP opcode=%u, sender=%d.%d.%d.%d, target=%d.%d.%d.%d",
+         ntohs(arp->opcode), arp->sender_ip[0], arp->sender_ip[1],
+         arp->sender_ip[2], arp->sender_ip[3], arp->target_ip[0],
+         arp->target_ip[1], arp->target_ip[2], arp->target_ip[3]);
+
+    if (ntohs(arp->opcode) == 1) {
+      INFO("E1K", "ARP request received - would send reply here");
+    }
+  }
+}
+
+void e1k_poll_rx(void) {
+  uint32_t rdh = e1k_read(E1K_RDH);
+  uint32_t rdt = e1k_read(E1K_RDT);
+  INFO("E1K", "RX poll: RDH=%u, RDT=%u, tail=%u", rdh, rdt, rx_tail);
+
+  // Debug: dump first 4 descriptors from memory
+  for (int i = 0; i < 4; i++) {
+    asm volatile("lfence" ::: "memory");
+    INFO("E1K", "RX desc[%d]: addr=0x%08x%08x, len=%u, status=0x%02x, err=0x%02x",
+         i, (uint32_t)(rx_ring[i].addr >> 32), (uint32_t)(rx_ring[i].addr & 0xFFFFFFFF),
+         rx_ring[i].length, rx_ring[i].status, rx_ring[i].errors);
+  }
+
+  // Debug: raw memory dump of first descriptor (16 bytes)
+  uint32_t *desc_mem = (uint32_t *)&rx_ring[0];
+  INFO("E1K", "RX desc[0] raw: %08x %08x %08x %08x",
+       desc_mem[0], desc_mem[1], desc_mem[2], desc_mem[3]);
+
+  int processed = 0;
+  while (1) {
+    e1k_rx_desc_t *desc = &rx_ring[rx_tail];
+
+    // Memory barrier to ensure we read fresh data from RAM
+    asm volatile("lfence" ::: "memory");
+    uint8_t status = desc->status;
+
+    if (!(status & E1K_RXD_STAT_DD)) {
+      INFO("E1K", "RX desc %u not ready (status=0x%02x)", rx_tail, status);
+      break;
+    }
+
+    INFO("E1K", "RX desc %u: status=0x%02x, errors=0x%02x, len=%u",
+         rx_tail, desc->status, desc->errors, desc->length);
+
+    if (desc->status & E1K_RXD_STAT_EOP) {
+      if (!(desc->errors & E1K_RXD_ERR_FRAME_ERR_MASK) && desc->length > 0) {
+        uint16_t pkt_len = desc->length;
+        if (pkt_len > RX_BUF_SIZE)
+          pkt_len = RX_BUF_SIZE;
+
+        e1k_process_packet(rx_bufs[rx_tail], pkt_len);
+        processed++;
+      } else {
+        INFO("E1K", "RX error: errors=0x%02x, len=%u", desc->errors, desc->length);
+      }
+    }
+
+    // Clear status and prepare for next use
+    desc->status = 0;
+    desc->errors = 0;
+    desc->length = 0;
+    rx_ring[rx_tail].addr = (uint64_t)(uintptr_t)&rx_bufs[rx_tail][0];
+
+    uint32_t next = (rx_tail + 1) % NUM_RX_DESC;
+    // Update RDT to point to next available descriptor
+    e1k_write(E1K_RDT, next);
+
+    rx_tail = next;
+  }
+
+  if (processed > 0) {
+    INFO("E1K", "Processed %d packets", processed);
+  }
 }
 
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 void handler(registers_t *r) {
-  INFO("E1K", "INTERRUPT GOT!!!");
-  HALT();
+  uint32_t icr = e1k_read(E1K_REG_ICR);
+  INFO("E1K", "Interrupt ICR=0x%08x", icr);
+
+  if (icr & E1K_ICR_RXDW) {
+    INFO("E1K", "RX write-back interrupt");
+    e1k_poll_rx();
+  }
+  if (icr & E1K_ICR_TXDW) {
+    INFO("E1K", "TX write-back interrupt");
+  }
+  if (icr & E1K_ICR_LSC) {
+    uint32_t status = e1k_read(E1K_REG_STATUS);
+    INFO("E1K", "Link status change: %s", (status & (1 << 1)) ? "UP" : "DOWN");
+  }
+  if (icr & E1K_ICR_RXDMT0) {
+    INFO("E1K", "RX descriptor minimum threshold");
+    e1k_poll_rx();
+  }
+
+  // Re-arm interrupts
+  e1k_write(E1K_REG_IMS, E1K_ICR_RXDW | E1K_ICR_TXDW | E1K_ICR_LSC | E1K_ICR_RXDMT0);
 }
 
-void e1k_rx_init(void) {
+void e1k_irq_init(void) {
   install_irq(nic_e1k.desc.irq, handler);
-  e1k_write(E1K_REG_IMS, 0x1F6DC);
-  e1k_read(0xc0);
+  // Clear any pending interrupts
+  e1k_read(E1K_REG_ICR);
+  // Enable RX/TX/Link interrupts
+  e1k_write(E1K_REG_IMS, E1K_ICR_RXDW | E1K_ICR_TXDW | E1K_ICR_LSC | E1K_ICR_RXDMT0);
   pic_clear_mask(nic_e1k.desc.irq);
+  
+  uint32_t status = e1k_read(E1K_REG_STATUS);
+  INFO("E1K", "IRQ init: IRQ=%u, STATUS=0x%08x, Link=%s",
+       nic_e1k.desc.irq, status, (status & (1 << 1)) ? "UP" : "DOWN");
+}
+
+void e1k_check_rx(void) {
+  // Manual poll function that can be called from main loop
+  uint32_t icr = e1k_read(E1K_REG_ICR);
+  if (icr != 0) {
+    INFO("E1K", "Manual poll ICR=0x%08x", icr);
+    e1k_poll_rx();
+    e1k_write(E1K_REG_IMS, E1K_ICR_RXDW | E1K_ICR_TXDW | E1K_ICR_LSC | E1K_ICR_RXDMT0);
+  }
 }
 
 int e1k_send(void *frame, size_t len) {
@@ -129,6 +334,9 @@ int e1k_send(void *frame, size_t len) {
   uint32_t cur = hw_tdt & (NUM_TX_DESC - 1);
 
   e1k_tx_desc_t *desc = &tx_ring[cur];
+
+  INFO("E1K", "TX send: len=%u, cur=%u, desc status=0x%02x", len, cur,
+       desc->status);
 
   int wait = 0;
   while (!(desc->status & STATUS_DD)) {
@@ -150,6 +358,8 @@ int e1k_send(void *frame, size_t len) {
   e1k_write(E1K_TDT, next);
   e1k_mmio_post();
 
+  INFO("E1K", "TX submitted: idx=%u, next=%u", cur, next);
+
   wait = 0;
   while (!(desc->status & STATUS_DD)) {
     if (++wait > 10000000) {
@@ -158,6 +368,7 @@ int e1k_send(void *frame, size_t len) {
     }
   }
 
+  INFO("E1K", "TX complete: idx=%u, status=0x%02x", cur, desc->status);
   tx_tail = next;
 
   return 0;
@@ -171,7 +382,9 @@ void e1k_init(nic_descriptor nic_desc) {
        nic_e1k.desc.dev_info.vendor_id, nic_e1k.desc.dev_info.device_id);
 
   uint16_t cmd = pci_config_read_word(&nic_e1k.desc, 0x04);
-  cmd |= (1 << 2);
+  cmd |= (1 << 2);  // Bus mastering
+  cmd |= (1 << 0);  // I/O space
+  cmd |= (1 << 1);  // Memory space
 
   pci_config_write_word(&nic_e1k.desc, 0x04, cmd);
 
@@ -179,6 +392,21 @@ void e1k_init(nic_descriptor nic_desc) {
   if (!(cmd_check & (1 << 2))) {
     INFO("E1K", "Warning: failed to enable bus mastering (cmd=0x%04x)",
          cmd_check);
+  }
+
+  // Read interrupt configuration
+  uint8_t irq_line = pci_config_read_word(&nic_e1k.desc, 0x3C) & 0xFF;
+  uint8_t irq_pin = pci_config_read_word(&nic_e1k.desc, 0x3D) & 0xFF;
+  INFO("E1K", "PCI IRQ: line=%u, pin=%u", irq_line, irq_pin);
+
+  // Check and disable MSI if enabled (force legacy interrupts)
+  uint16_t msi_cap = pci_config_read_word(&nic_e1k.desc, 0x50);
+  INFO("E1K", "MSI capability: 0x%04x", msi_cap);
+  if (msi_cap & 0x1) {
+    INFO("E1K", "MSI is enabled, disabling for legacy IRQ");
+    // Clear MSI enable bit
+    uint16_t msi_ctrl = msi_cap & ~0x1U;
+    pci_config_write_word(&nic_e1k.desc, 0x50, msi_ctrl);
   }
 
   uint32_t bar0 = nic_e1k.desc.bar[0];
@@ -205,8 +433,13 @@ void e1k_init(nic_descriptor nic_desc) {
     }
   }
 
+  // Set link up for emulation (some QEMU versions need this)
+  uint32_t ctrl = e1k_read(E1K_REG_CTRL);
+  ctrl |= E1K_CTRL_SLU | E1K_CTRL_FRCSPD | E1K_CTRL_FRCDPX | E1K_CTRL_FD;
+  e1k_write(E1K_REG_CTRL, ctrl);
+
   uint32_t status = e1k_read(E1K_REG_STATUS);
-  INFO("E1K", "STATUS = 0x%08x", status);
+  INFO("E1K", "STATUS = 0x%08x, CTRL = 0x%08x", status, ctrl);
 
   int has_eeprom = e1k_detect_eeprom();
   INFO("E1K", "EEPROM %sdetected", has_eeprom ? "" : "not ");
@@ -230,6 +463,7 @@ void e1k_init(nic_descriptor nic_desc) {
 
   e1k_tx_init();
   e1k_rx_init();
+  e1k_irq_init();
 }
 
 void e1k_send_arp_request(uint8_t src_ip[4], uint8_t target_ip[4]) {
@@ -264,7 +498,19 @@ void e1k_send_arp_request(uint8_t src_ip[4], uint8_t target_ip[4]) {
   int r = e1k_send(frame, frame_len);
   if (r != 0) {
     INFO("E1K", "e1k_send failed with %d", r);
+  } else {
+    INFO("E1K", "ARP request sent successfully");
   }
 
   kfree(frame);
+
+  // Poll for response for a short time
+  INFO("E1K", "Polling for ARP response...");
+  for (int i = 0; i < 1000000; i++) {
+    asm volatile("nop");
+    if (i % 100000 == 0) {
+      e1k_check_rx();
+    }
+  }
+  e1k_poll_rx();
 }
