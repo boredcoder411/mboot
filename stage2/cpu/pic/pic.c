@@ -7,6 +7,11 @@ void pic_clear_mask(size_t i) {
   uint8_t bit = (uint8_t)(1 << (i < 8 ? i : (i - 8)));
   uint8_t value = inb(port) & ~bit;
   outb(port, value);
+
+  if (i >= 8) {
+    uint8_t master = inb(PIC1_DATA) & ~(1 << 2);
+    outb(PIC1_DATA, master);
+  }
 }
 
 void pic_set_mask(size_t i) {

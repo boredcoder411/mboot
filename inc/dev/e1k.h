@@ -15,9 +15,11 @@
 #define E1K_EERD_START (1 << 0)
 #define E1K_EERD_DONE (1 << 4)
 #define E1K_REG_EECD 0x0010
+#define E1K_REG_RDTR 0x2820
+#define E1K_REG_RADV 0x282C
 #define E1K_REG_IMS 0x00D0
 #define E1K_REG_ICR 0x00C0
-#define E1K_REG_ITR 0x0082
+#define E1K_REG_ITR 0x00C4
 #define E1K_EECD_EE_PRES (1 << 8)
 
 // Interrupt Cause/Mask bits
@@ -42,6 +44,9 @@
 #define E1K_TCTL_CT_SHIFT 4
 #define E1K_TCTL_COLD_SHIFT 12
 
+#define E1K_RAL0 0x5400
+#define E1K_RAH0 0x5404
+#define E1K_RAH_AV (1U << 31)
 #define E1K_RDBAL 0x2800
 #define E1K_RDBAH 0x2804
 #define E1K_RDLEN 0x2808
@@ -119,5 +124,3 @@ _Static_assert(sizeof(e1k_rx_desc_t) == 16, "RX descriptor must be 16 bytes");
 void e1k_init(nic_descriptor nic_desc);
 int e1k_send(void *frame, size_t len);
 void e1k_send_arp_request(uint8_t src_ip[4], uint8_t target_ip[4]);
-void e1k_poll_rx(void);
-void e1k_check_rx(void);

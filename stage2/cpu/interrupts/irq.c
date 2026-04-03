@@ -9,10 +9,14 @@
 void (*irq_handlers[IRQs])(registers_t *regs) = {0};
 
 void irq_dispatcher(registers_t *r) {
+  size_t irq = (size_t)(r->int_no - EXCEPTION_ISRS);
+
   CLI()
   INFO("INTERRUPT", "irq: %i", r->int_no);
-  irq_handlers[r->int_no - EXCEPTION_ISRS](r);
-  pic_send_eoi(r->int_no);
+  if (irq < IRQs && irq_handlers[irq]) {
+    irq_handlers[irq](r);
+  }
+  pic_send_eoi(irq);
   STI()
 }
 

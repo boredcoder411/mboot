@@ -12,6 +12,9 @@
 
 nic_descriptor nic_e1k;
 
+static const uint32_t e1k_irq_mask =
+    E1K_ICR_TXDW | E1K_ICR_LSC | E1K_ICR_RXO | E1K_ICR_RXT0;
+
 static e1k_tx_desc_t *tx_ring = NULL;
 static uint8_t (*tx_bufs)[TX_BUF_SIZE] = NULL;
 static uint32_t tx_tail = 0;
@@ -78,18 +81,31 @@ void e1k_read_mac() {
   }
 }
 
+static void e1k_program_mac(void) {
+  uint32_t ral = ((uint32_t)nic_e1k.mac[0]) |
+                 ((uint32_t)nic_e1k.mac[1] << 8) |
+                 ((uint32_t)nic_e1k.mac[2] << 16) |
+                 ((uint32_t)nic_e1k.mac[3] << 24);
+  uint32_t rah = ((uint32_t)nic_e1k.mac[4]) |
+                 ((uint32_t)nic_e1k.mac[5] << 8) |
+                 E1K_RAH_AV;
+
+  e1k_write(E1K_RAL0, ral);
+  e1k_write(E1K_RAH0, rah);
+
+  INFO("E1K", "RAR0 programmed: RAL=0x%08x, RAH=0x%08x", ral, rah);
+}
+
 static inline void e1k_mmio_post(void) {
   (void)e1k_read(E1K_TDT);
   asm volatile("" ::: "memory");
 }
 
 void e1k_tx_init(void) {
-  // Allocate TX ring with 128-byte alignment
   uintptr_t ring_addr = (uintptr_t)kmalloc(sizeof(e1k_tx_desc_t) * NUM_TX_DESC + 128);
   uintptr_t aligned_ring = align_up_uintptr(ring_addr, 128);
   tx_ring = (e1k_tx_desc_t *)aligned_ring;
-  
-  // Allocate TX buffers
+
   tx_bufs = (uint8_t (*)[TX_BUF_SIZE])kmalloc(sizeof(uint8_t) * NUM_TX_DESC * TX_BUF_SIZE);
   
   INFO("E1K", "TX alloc: ring=0x%08x, bufs=0x%08x", (uint32_t)tx_ring, (uint32_t)tx_bufs);
@@ -184,6 +200,8 @@ void e1k_rx_init(void) {
 
   // Disable interrupt throttling for immediate interrupts
   e1k_write(E1K_REG_ITR, 0);
+  e1k_write(E1K_REG_RDTR, 0);
+  e1k_write(E1K_REG_RADV, 0);
 
   // Post RX descriptors and ensure they're visible to hardware
   e1k_write(E1K_RDT, NUM_RX_DESC - 1);
@@ -232,39 +250,17 @@ static void e1k_process_packet(uint8_t *data, uint16_t len) {
   }
 }
 
-void e1k_poll_rx(void) {
-  uint32_t rdh = e1k_read(E1K_RDH);
-  uint32_t rdt = e1k_read(E1K_RDT);
-  INFO("E1K", "RX poll: RDH=%u, RDT=%u, tail=%u", rdh, rdt, rx_tail);
-
-  // Debug: dump first 4 descriptors from memory
-  for (int i = 0; i < 4; i++) {
-    asm volatile("lfence" ::: "memory");
-    INFO("E1K", "RX desc[%d]: addr=0x%08x%08x, len=%u, status=0x%02x, err=0x%02x",
-         i, (uint32_t)(rx_ring[i].addr >> 32), (uint32_t)(rx_ring[i].addr & 0xFFFFFFFF),
-         rx_ring[i].length, rx_ring[i].status, rx_ring[i].errors);
-  }
-
-  // Debug: raw memory dump of first descriptor (16 bytes)
-  uint32_t *desc_mem = (uint32_t *)&rx_ring[0];
-  INFO("E1K", "RX desc[0] raw: %08x %08x %08x %08x",
-       desc_mem[0], desc_mem[1], desc_mem[2], desc_mem[3]);
-
+static void e1k_drain_rx(void) {
   int processed = 0;
   while (1) {
     e1k_rx_desc_t *desc = &rx_ring[rx_tail];
 
-    // Memory barrier to ensure we read fresh data from RAM
     asm volatile("lfence" ::: "memory");
     uint8_t status = desc->status;
 
     if (!(status & E1K_RXD_STAT_DD)) {
-      INFO("E1K", "RX desc %u not ready (status=0x%02x)", rx_tail, status);
       break;
     }
-
-    INFO("E1K", "RX desc %u: status=0x%02x, errors=0x%02x, len=%u",
-         rx_tail, desc->status, desc->errors, desc->length);
 
     if (desc->status & E1K_RXD_STAT_EOP) {
       if (!(desc->errors & E1K_RXD_ERR_FRAME_ERR_MASK) && desc->length > 0) {
@@ -275,7 +271,8 @@ void e1k_poll_rx(void) {
         e1k_process_packet(rx_bufs[rx_tail], pkt_len);
         processed++;
       } else {
-        INFO("E1K", "RX error: errors=0x%02x, len=%u", desc->errors, desc->length);
+        INFO("E1K", "RX error: status=0x%02x, errors=0x%02x, len=%u",
+             desc->status, desc->errors, desc->length);
       }
     }
 
@@ -285,11 +282,13 @@ void e1k_poll_rx(void) {
     desc->length = 0;
     rx_ring[rx_tail].addr = (uint64_t)(uintptr_t)&rx_bufs[rx_tail][0];
 
-    uint32_t next = (rx_tail + 1) % NUM_RX_DESC;
-    // Update RDT to point to next available descriptor
-    e1k_write(E1K_RDT, next);
+    uint32_t completed = rx_tail;
+    rx_tail = (rx_tail + 1) % NUM_RX_DESC;
 
-    rx_tail = next;
+    // RDT points one past the last descriptor owned by hardware, so when we
+    // return a consumed descriptor to the NIC we publish the descriptor we
+    // just recycled, not the next one we plan to inspect.
+    e1k_write(E1K_RDT, completed);
   }
 
   if (processed > 0) {
@@ -302,9 +301,9 @@ void handler(registers_t *r) {
   uint32_t icr = e1k_read(E1K_REG_ICR);
   INFO("E1K", "Interrupt ICR=0x%08x", icr);
 
-  if (icr & E1K_ICR_RXDW) {
-    INFO("E1K", "RX write-back interrupt");
-    e1k_poll_rx();
+  if (icr & E1K_ICR_RXT0) {
+    INFO("E1K", "RX timer interrupt");
+    e1k_drain_rx();
   }
   if (icr & E1K_ICR_TXDW) {
     INFO("E1K", "TX write-back interrupt");
@@ -313,36 +312,23 @@ void handler(registers_t *r) {
     uint32_t status = e1k_read(E1K_REG_STATUS);
     INFO("E1K", "Link status change: %s", (status & (1 << 1)) ? "UP" : "DOWN");
   }
-  if (icr & E1K_ICR_RXDMT0) {
-    INFO("E1K", "RX descriptor minimum threshold");
-    e1k_poll_rx();
+  if (icr & E1K_ICR_RXO) {
+    INFO("E1K", "RX overrun");
+    e1k_drain_rx();
   }
 
-  // Re-arm interrupts
-  e1k_write(E1K_REG_IMS, E1K_ICR_RXDW | E1K_ICR_TXDW | E1K_ICR_LSC | E1K_ICR_RXDMT0);
+  e1k_write(E1K_REG_IMS, e1k_irq_mask);
 }
 
 void e1k_irq_init(void) {
   install_irq(nic_e1k.desc.irq, handler);
-  // Clear any pending interrupts
   e1k_read(E1K_REG_ICR);
-  // Enable RX/TX/Link interrupts
-  e1k_write(E1K_REG_IMS, E1K_ICR_RXDW | E1K_ICR_TXDW | E1K_ICR_LSC | E1K_ICR_RXDMT0);
+  e1k_write(E1K_REG_IMS, e1k_irq_mask);
   pic_clear_mask(nic_e1k.desc.irq);
   
   uint32_t status = e1k_read(E1K_REG_STATUS);
   INFO("E1K", "IRQ init: IRQ=%u, STATUS=0x%08x, Link=%s",
        nic_e1k.desc.irq, status, (status & (1 << 1)) ? "UP" : "DOWN");
-}
-
-void e1k_check_rx(void) {
-  // Manual poll function that can be called from main loop
-  uint32_t icr = e1k_read(E1K_REG_ICR);
-  if (icr != 0) {
-    INFO("E1K", "Manual poll ICR=0x%08x", icr);
-    e1k_poll_rx();
-    e1k_write(E1K_REG_IMS, E1K_ICR_RXDW | E1K_ICR_TXDW | E1K_ICR_LSC | E1K_ICR_RXDMT0);
-  }
 }
 
 int e1k_send(void *frame, size_t len) {
@@ -414,17 +400,14 @@ void e1k_init(nic_descriptor nic_desc) {
          cmd_check);
   }
 
-  // Read interrupt configuration
   uint8_t irq_line = pci_config_read_word(&nic_e1k.desc, 0x3C) & 0xFF;
   uint8_t irq_pin = pci_config_read_word(&nic_e1k.desc, 0x3D) & 0xFF;
   INFO("E1K", "PCI IRQ: line=%u, pin=%u", irq_line, irq_pin);
 
-  // Check and disable MSI if enabled (force legacy interrupts)
   uint16_t msi_cap = pci_config_read_word(&nic_e1k.desc, 0x50);
   INFO("E1K", "MSI capability: 0x%04x", msi_cap);
   if (msi_cap & 0x1) {
     INFO("E1K", "MSI is enabled, disabling for legacy IRQ");
-    // Clear MSI enable bit
     uint16_t msi_ctrl = msi_cap & ~0x1U;
     pci_config_write_word(&nic_e1k.desc, 0x50, msi_ctrl);
   }
@@ -453,7 +436,6 @@ void e1k_init(nic_descriptor nic_desc) {
     }
   }
 
-  // Set link up for emulation (some QEMU versions need this)
   uint32_t ctrl = e1k_read(E1K_REG_CTRL);
   ctrl |= E1K_CTRL_SLU | E1K_CTRL_FRCSPD | E1K_CTRL_FRCDPX | E1K_CTRL_FD;
   e1k_write(E1K_REG_CTRL, ctrl);
@@ -480,6 +462,8 @@ void e1k_init(nic_descriptor nic_desc) {
   INFO("E1K", "MAC %02x:%02x:%02x:%02x:%02x:%02x", nic_e1k.mac[0],
        nic_e1k.mac[1], nic_e1k.mac[2], nic_e1k.mac[3], nic_e1k.mac[4],
        nic_e1k.mac[5]);
+
+  e1k_program_mac();
 
   e1k_tx_init();
   e1k_rx_init();
@@ -523,14 +507,4 @@ void e1k_send_arp_request(uint8_t src_ip[4], uint8_t target_ip[4]) {
   }
 
   kfree(frame);
-
-  // Poll for response for a short time
-  INFO("E1K", "Polling for ARP response...");
-  for (int i = 0; i < 1000000; i++) {
-    asm volatile("nop");
-    if (i % 100000 == 0) {
-      e1k_check_rx();
-    }
-  }
-  e1k_poll_rx();
 }
