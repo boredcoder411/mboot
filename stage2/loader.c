@@ -45,9 +45,27 @@ void loader_start(void) {
 
   pci_enumerate();
   uint8_t src_ip[4] = {10, 0, 2, 15};
-  uint8_t target_ip[4] = {10, 0, 2, 2};
+  uint8_t gateway_ip[4] = {10, 0, 2, 2};
+  uint8_t ping_ip[4] = {142, 251, 142, 14};
+  uint8_t gateway_mac[6];
   STI();
-  e1k_send_arp_request(src_ip, target_ip);
+  e1k_send_arp_request(src_ip, gateway_ip);
+
+  int resolved = 0;
+  for (int i = 0; i < 12000000; ++i) {
+    e1k_drain_rx();
+    if (e1k_try_get_arp_mac(gateway_ip, gateway_mac)) {
+      resolved = 1;
+      break;
+    }
+    asm volatile("pause");
+  }
+
+  if (resolved) {
+    e1k_send_icmp_echo(src_ip, ping_ip, gateway_mac, 0xB007, 1);
+  } else {
+    INFO("MAIN", "failed to resolve gateway ARP, skipping ICMP echo");
+  }
 
   fat16_init();
 
