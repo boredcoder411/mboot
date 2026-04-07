@@ -7,9 +7,9 @@
 #include "io.h"
 #include "mem.h"
 #include "net/arp.h"
+#include "net/eth.h"
 #include "net/icmp.h"
 #include "net/ipv4.h"
-#include "net/eth.h"
 #include "utils.h"
 
 nic_descriptor nic_e1k;
@@ -183,13 +183,11 @@ void e1k_read_mac() {
 }
 
 static void e1k_program_mac(void) {
-  uint32_t ral = ((uint32_t)nic_e1k.mac[0]) |
-                 ((uint32_t)nic_e1k.mac[1] << 8) |
+  uint32_t ral = ((uint32_t)nic_e1k.mac[0]) | ((uint32_t)nic_e1k.mac[1] << 8) |
                  ((uint32_t)nic_e1k.mac[2] << 16) |
                  ((uint32_t)nic_e1k.mac[3] << 24);
-  uint32_t rah = ((uint32_t)nic_e1k.mac[4]) |
-                 ((uint32_t)nic_e1k.mac[5] << 8) |
-                 E1K_RAH_AV;
+  uint32_t rah =
+      ((uint32_t)nic_e1k.mac[4]) | ((uint32_t)nic_e1k.mac[5] << 8) | E1K_RAH_AV;
 
   e1k_write(E1K_RAL0, ral);
   e1k_write(E1K_RAH0, rah);
@@ -203,13 +201,16 @@ static inline void e1k_mmio_post(void) {
 }
 
 void e1k_tx_init(void) {
-  uintptr_t ring_addr = (uintptr_t)kmalloc(sizeof(e1k_tx_desc_t) * NUM_TX_DESC + 128);
+  uintptr_t ring_addr =
+      (uintptr_t)kmalloc(sizeof(e1k_tx_desc_t) * NUM_TX_DESC + 128);
   uintptr_t aligned_ring = align_up_uintptr(ring_addr, 128);
   tx_ring = (e1k_tx_desc_t *)aligned_ring;
 
-  tx_bufs = (uint8_t (*)[TX_BUF_SIZE])kmalloc(sizeof(uint8_t) * NUM_TX_DESC * TX_BUF_SIZE);
-  
-  INFO("E1K", "TX alloc: ring=0x%08x, bufs=0x%08x", (uint32_t)tx_ring, (uint32_t)tx_bufs);
+  tx_bufs = (uint8_t (*)[TX_BUF_SIZE])kmalloc(sizeof(uint8_t) * NUM_TX_DESC *
+                                              TX_BUF_SIZE);
+
+  INFO("E1K", "TX alloc: ring=0x%08x, bufs=0x%08x", (uint32_t)tx_ring,
+       (uint32_t)tx_bufs);
 
   memset(tx_ring, 0, sizeof(e1k_tx_desc_t) * NUM_TX_DESC);
 
@@ -237,20 +238,23 @@ void e1k_tx_init(void) {
 
   e1k_write(E1K_TIPG, 0x0060200A);
 
-  INFO("E1K", "TX ring at 0x%08x (align=%d), buf[0] at 0x%08x", (uint32_t)tx_ring,
-       (uint32_t)tx_ring % 128, (uint32_t)tx_bufs[0]);
+  INFO("E1K", "TX ring at 0x%08x (align=%d), buf[0] at 0x%08x",
+       (uint32_t)tx_ring, (uint32_t)tx_ring % 128, (uint32_t)tx_bufs[0]);
 }
 
 void e1k_rx_init(void) {
   // Allocate RX ring with 128-byte alignment
-  uintptr_t ring_addr = (uintptr_t)kmalloc(sizeof(e1k_rx_desc_t) * NUM_RX_DESC + 128);
+  uintptr_t ring_addr =
+      (uintptr_t)kmalloc(sizeof(e1k_rx_desc_t) * NUM_RX_DESC + 128);
   uintptr_t aligned_ring = align_up_uintptr(ring_addr, 128);
   rx_ring = (e1k_rx_desc_t *)aligned_ring;
-  
+
   // Allocate RX buffers
-  rx_bufs = (uint8_t (*)[RX_BUF_SIZE])kmalloc(sizeof(uint8_t) * NUM_RX_DESC * RX_BUF_SIZE);
-  
-  INFO("E1K", "RX alloc: ring=0x%08x, bufs=0x%08x", (uint32_t)rx_ring, (uint32_t)rx_bufs);
+  rx_bufs = (uint8_t (*)[RX_BUF_SIZE])kmalloc(sizeof(uint8_t) * NUM_RX_DESC *
+                                              RX_BUF_SIZE);
+
+  INFO("E1K", "RX alloc: ring=0x%08x, bufs=0x%08x", (uint32_t)rx_ring,
+       (uint32_t)rx_bufs);
 
   memset(rx_ring, 0, sizeof(e1k_rx_desc_t) * NUM_RX_DESC);
 
@@ -278,7 +282,7 @@ void e1k_rx_init(void) {
 
   // Set head and tail pointers
   e1k_write(E1K_RDH, 0);
-  e1k_write(E1K_RDT, NUM_RX_DESC - 1);  // All descriptors initially available
+  e1k_write(E1K_RDT, NUM_RX_DESC - 1); // All descriptors initially available
 
   // Configure RXDCTL for immediate descriptor writeback
   // Set WTHRESH=0 (immediate), HTHRESH=0, PTHRESH=0 for lowest latency
@@ -317,14 +321,15 @@ void e1k_rx_init(void) {
 
   INFO("E1K", "RX init: RDBAL=0x%08x, RDBAH=0x%08x, RDLEN=%u", rdbal, rdbah,
        NUM_RX_DESC * sizeof(e1k_rx_desc_t));
-  INFO("E1K", "RX check: STATUS=0x%08x, RDH=%u, RDT=%u, RCTL=0x%08x, RDLEN_chk=%u, RDBAL_chk=0x%08x",
+  INFO("E1K",
+       "RX check: STATUS=0x%08x, RDH=%u, RDT=%u, RCTL=0x%08x, RDLEN_chk=%u, "
+       "RDBAL_chk=0x%08x",
        status, rdh_check, rdt_check, rctl_check, rdlen_check, rdbal_check);
-  INFO("E1K", "RX ring at 0x%08x (align=%d), buf[0] at 0x%08x", (uint32_t)rx_ring,
-       (uint32_t)rx_ring % 128, (uint32_t)rx_bufs[0]);
-  INFO("E1K", "RX desc[0].addr = 0x%08x%08x, desc size=%d", 
+  INFO("E1K", "RX ring at 0x%08x (align=%d), buf[0] at 0x%08x",
+       (uint32_t)rx_ring, (uint32_t)rx_ring % 128, (uint32_t)rx_bufs[0]);
+  INFO("E1K", "RX desc[0].addr = 0x%08x%08x, desc size=%d",
        (uint32_t)(rx_ring[0].addr >> 32),
-       (uint32_t)(rx_ring[0].addr & 0xFFFFFFFF),
-       (int)sizeof(e1k_rx_desc_t));
+       (uint32_t)(rx_ring[0].addr & 0xFFFFFFFF), (int)sizeof(e1k_rx_desc_t));
 }
 
 static void e1k_process_packet(uint8_t *data, uint16_t len) {
@@ -333,7 +338,8 @@ static void e1k_process_packet(uint8_t *data, uint16_t len) {
   if (len < sizeof(eth_hdr))
     return;
 
-  INFO("E1K", "RX packet: ethertype=0x%04x, len=%u", ntohs(eth->ethertype), len);
+  INFO("E1K", "RX packet: ethertype=0x%04x, len=%u", ntohs(eth->ethertype),
+       len);
 
   if (ntohs(eth->ethertype) == 0x0806) {
     arp_pkt *arp = (arp_pkt *)(data + sizeof(eth_hdr));
@@ -431,10 +437,10 @@ void e1k_irq_init(void) {
   e1k_read(E1K_REG_ICR);
   e1k_write(E1K_REG_IMS, e1k_irq_mask);
   pic_clear_mask(nic_e1k.desc.irq);
-  
+
   uint32_t status = e1k_read(E1K_REG_STATUS);
-  INFO("E1K", "IRQ init: IRQ=%u, STATUS=0x%08x, Link=%s",
-       nic_e1k.desc.irq, status, (status & (1 << 1)) ? "UP" : "DOWN");
+  INFO("E1K", "IRQ init: IRQ=%u, STATUS=0x%08x, Link=%s", nic_e1k.desc.irq,
+       status, (status & (1 << 1)) ? "UP" : "DOWN");
 }
 
 int e1k_send(void *frame, size_t len) {
@@ -494,9 +500,9 @@ void e1k_init(nic_descriptor nic_desc) {
        nic_e1k.desc.dev_info.vendor_id, nic_e1k.desc.dev_info.device_id);
 
   uint16_t cmd = pci_config_read_word(&nic_e1k.desc, 0x04);
-  cmd |= (1 << 2);  // Bus mastering
-  cmd |= (1 << 0);  // I/O space
-  cmd |= (1 << 1);  // Memory space
+  cmd |= (1 << 2); // Bus mastering
+  cmd |= (1 << 0); // I/O space
+  cmd |= (1 << 1); // Memory space
 
   pci_config_write_word(&nic_e1k.desc, 0x04, cmd);
 
@@ -646,8 +652,8 @@ int e1k_send_icmp_echo(uint8_t src_ip[4], uint8_t dst_ip[4],
   ipv4_hdr *ipv4 = (ipv4_hdr *)(frame + sizeof(eth_hdr));
   ipv4->version_ihl = 0x45;
   ipv4->dscp_ecn = 0;
-  ipv4->total_length = htons(sizeof(ipv4_hdr) + sizeof(icmp_echo_hdr) +
-                             payload_len);
+  ipv4->total_length =
+      htons(sizeof(ipv4_hdr) + sizeof(icmp_echo_hdr) + payload_len);
   ipv4->identification = htons(sequence);
   ipv4->flags_fragment_offset = htons(0x4000);
   ipv4->ttl = 64;

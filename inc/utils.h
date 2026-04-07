@@ -9,10 +9,10 @@
 #define STI() asm("sti");
 #define htons(x) ((((x) & 0xFF) << 8) | ((x) >> 8))
 #define ntohs(x) htons(x)
-#define htonl(x)                                                             \
-  ((((uint32_t)(x) & 0x000000FFU) << 24) |                                   \
-   (((uint32_t)(x) & 0x0000FF00U) << 8) |                                    \
-   (((uint32_t)(x) & 0x00FF0000U) >> 8) |                                    \
+#define htonl(x)                                                               \
+  ((((uint32_t)(x) & 0x000000FFU) << 24) |                                     \
+   (((uint32_t)(x) & 0x0000FF00U) << 8) |                                      \
+   (((uint32_t)(x) & 0x00FF0000U) >> 8) |                                      \
    (((uint32_t)(x) & 0xFF000000U) >> 24))
 #define ntohl(x) htonl(x)
 #define strcmp(a, b) strncmp(a, b, strlen(a))

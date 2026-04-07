@@ -23,15 +23,15 @@
 #define E1K_EECD_EE_PRES (1 << 8)
 
 // Interrupt Cause/Mask bits
-#define E1K_ICR_TXDW (1 << 0)      // Transmit Descriptor Written Back
-#define E1K_ICR_TXQE (1 << 1)      // Transmit Queue Empty
-#define E1K_ICR_LSC (1 << 2)       // Link Status Change
-#define E1K_ICR_RXSEQ (1 << 3)     // Receive Sequence Error
-#define E1K_ICR_RXDMT0 (1 << 4)    // Receive Descriptor Minimum Threshold Hit
-#define E1K_ICR_RXO (1 << 6)       // Receiver Overrun
-#define E1K_ICR_RXT0 (1 << 7)      // Receiver Timer Interrupt
-#define E1K_ICR_RXDW (1 << 11)     // Receive Descriptor Written Back
-#define E1K_ICR_ACK (1 << 15)      // TCP ACK Received
+#define E1K_ICR_TXDW (1 << 0)   // Transmit Descriptor Written Back
+#define E1K_ICR_TXQE (1 << 1)   // Transmit Queue Empty
+#define E1K_ICR_LSC (1 << 2)    // Link Status Change
+#define E1K_ICR_RXSEQ (1 << 3)  // Receive Sequence Error
+#define E1K_ICR_RXDMT0 (1 << 4) // Receive Descriptor Minimum Threshold Hit
+#define E1K_ICR_RXO (1 << 6)    // Receiver Overrun
+#define E1K_ICR_RXT0 (1 << 7)   // Receiver Timer Interrupt
+#define E1K_ICR_RXDW (1 << 11)  // Receive Descriptor Written Back
+#define E1K_ICR_ACK (1 << 15)   // TCP ACK Received
 #define E1K_TDBAL 0x3800
 #define E1K_TDBAH 0x3804
 #define E1K_TDLEN 0x3808
@@ -83,7 +83,8 @@
 #define E1K_RXD_ERR_SE (1 << 1)
 #define E1K_RXD_ERR_PEO (1 << 2)
 #define E1K_RXD_ERR_RXE (1 << 3)
-#define E1K_RXD_ERR_FRAME_ERR_MASK (E1K_RXD_ERR_CE | E1K_RXD_ERR_SE | E1K_RXD_ERR_PEO | E1K_RXD_ERR_RXE)
+#define E1K_RXD_ERR_FRAME_ERR_MASK                                             \
+  (E1K_RXD_ERR_CE | E1K_RXD_ERR_SE | E1K_RXD_ERR_PEO | E1K_RXD_ERR_RXE)
 
 #define CMD_EOP (1 << 0)
 #define CMD_IFCS (1 << 1)
@@ -107,12 +108,12 @@ typedef struct {
 } __attribute__((packed, aligned(16))) e1k_tx_desc_t;
 
 typedef struct {
-  uint64_t addr;       // 0-7: Buffer address
-  uint16_t length;     // 8-9: Packet length
-  uint16_t checksum;   // 10-11: Checksum
-  uint8_t status;      // 12: Status flags
-  uint8_t errors;      // 13: Error flags  
-  uint16_t special;    // 14-15: Special flags
+  uint64_t addr;     // 0-7: Buffer address
+  uint16_t length;   // 8-9: Packet length
+  uint16_t checksum; // 10-11: Checksum
+  uint8_t status;    // 12: Status flags
+  uint8_t errors;    // 13: Error flags
+  uint16_t special;  // 14-15: Special flags
 } __attribute__((packed, aligned(16))) e1k_rx_desc_t;
 
 // RX descriptor is 16 bytes

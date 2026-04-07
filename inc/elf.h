@@ -5,6 +5,10 @@
 #define PT_LOAD 1
 #define ELF_MAGIC 0x464C457F
 
+#define SHT_SYMTAB 2
+#define SHT_STRTAB 3
+#define SHT_REL 9
+
 typedef struct {
   uint32_t magic;
   uint8_t class;
@@ -39,6 +43,20 @@ typedef struct {
   uint32_t align;
 } Elf32_Phdr;
 
+typedef struct {
+  uint32_t sh_name;
+  uint32_t sh_type;
+  uint32_t sh_flags;
+  uint32_t sh_addr;
+  uint32_t sh_offset;
+  uint32_t sh_size;
+  uint32_t sh_link;
+  uint32_t sh_info;
+  uint32_t sh_addralign;
+  uint32_t sh_entsize;
+} __attribute__((packed)) Elf32_Shdr;
+
 typedef void (*entry_point_t)(void);
 
 int load_elf(void *file_data);
+void jump_to_entry(void *elf_data);

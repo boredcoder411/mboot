@@ -37,6 +37,7 @@ void loader_start(void) {
   pit_init();
   enable_fpu();
   install_keyboard();
+  init_serial();
   remap_vga_dac();
 
   e820_entry_t *mem_map = E820_TABLE_ADDR;
@@ -69,15 +70,41 @@ void loader_start(void) {
 
   fat16_init();
 
+  INFO("MAIN", "Loading test.elf...");
   int file = open_file("/test.elf");
-  int size = fat16_get_size(file);
-  void *buf = kmalloc(size);
-  read_file(file, size, buf);
-  load_elf(buf);
-  kfree(buf);
-  close_file(file);
+  void *test_buf = NULL;
+  int test_size = 0;
+
+  if (file >= 0) {
+    test_size = fat16_get_size(file);
+    test_buf = kmalloc(test_size);
+    read_file(file, test_size, test_buf);
+    load_elf(test_buf);
+    close_file(file);
+    INFO("MAIN", "test.elf loaded successfully");
+  } else {
+    INFO("MAIN", "error: could not find test.elf");
+    while (1) {
+    }
+  }
+
+  Elf32_Ehdr *test_header = (Elf32_Ehdr *)test_buf;
+  entry_point_t test_entry = (entry_point_t)test_header->entry;
+
+  kfree(test_buf);
+
+  INFO("MAIN", "Jumping to test program at 0x%x", (uint32_t)test_entry);
+  test_entry();
 
   INFO("MAIN", "if you see this message, the elf returned somehow.");
+
+#ifdef ALLOC_DBG
+  INFO("MAIN", "malloc called %d times, free called %d times", malloc_calls,
+       free_calls);
+#endif
+
+  while (1) {
+  }
 
 #ifdef ALLOC_DBG
   INFO("MAIN", "malloc called %d times, free called %d times", malloc_calls,

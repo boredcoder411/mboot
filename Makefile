@@ -76,7 +76,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
 
 image:
-	@./image.sh test_files/hi.txt build/test.elf
+	@./image.sh test_files/hi.txt build/libc.elf build/test.elf
 
 psf: tools/psf.c | $(BUILD)
 	gcc -o $(BUILD)/psf tools/psf.c -Iinc/ $$(pkg-config --cflags --libs libpng)
@@ -87,8 +87,16 @@ imf: tools/imf.c | $(BUILD)
 file_transforms: psf imf | $(BUILD)
 	$(BUILD)/psf test_files/font.png $(BUILD)/font.psf
 	$(BUILD)/imf test_files/icon.png $(BUILD)/icon.imf --rle
-	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -o $(BUILD)/test.o -c test_files/test.c
-	$(LD) $(BUILD)/test.o -m elf_i386 -static -o $(BUILD)/test.elf
+	@echo "Building libc as separate object..."
+	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c user/src/libc.c -o $(BUILD)/libc.o
+	@echo "Building test program as separate object..."
+	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c test_files/test.c -o $(BUILD)/test.o
+	@echo "Building entry points..."
+	nasm -f elf user/src/crt0.s -o $(BUILD)/crt0.o
+	@echo "Creating libc.elf..."
+	$(LD) $(BUILD)/libc.o -Ttext 0x40000000 -m elf_i386 -static -o $(BUILD)/libc.elf
+	@echo "Creating test.elf..."
+	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/test.o -T user/linker_test.ld -m elf_i386 -static -o $(BUILD)/test.elf
 
 format:
 	@find . -type f \( -name "*.c" -o -name "*.h" \) -exec clang-format -i {} +

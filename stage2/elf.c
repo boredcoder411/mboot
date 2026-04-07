@@ -23,9 +23,12 @@ int load_elf(void *file_data) {
       memset((uint8_t *)dst + ph->filesz, 0, ph->memsz - ph->filesz);
   }
 
-  INFO("ELF", "Running elf file");
-  entry_point_t entry = (entry_point_t)(eh->entry);
-  entry();
-
   return 0;
+}
+
+void jump_to_entry(void *elf_data) {
+  Elf32_Ehdr *eh = (Elf32_Ehdr *)elf_data;
+  entry_point_t entry = (entry_point_t)(eh->entry);
+  INFO("ELF", "Jumping to entry point at 0x%x", eh->entry);
+  entry();
 }

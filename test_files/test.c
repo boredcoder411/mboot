@@ -1,12 +1,24 @@
-#include <stdint.h>
+#include "./user/include/libc.h"
 
-void outb(uint16_t port, uint8_t value) {
-  asm volatile("outb %0, %1" : : "a"(value), "Nd"(port));
-}
+static char buffer[256];
 
-void _start() {
-  outb(0x3f8, 'a');
-  asm("int $0x80");
-  while (1) {
+void main() {
+  int fd = open("/hi.txt", 0);
+  if (fd < 0) {
+    write(1, "Failed to open hi.txt\n", 22);
+    exit(1);
   }
+
+  int n = read(fd, buffer, sizeof(buffer) - 1);
+  if (n < 0) {
+    write(1, "Failed to read hi.txt\n", 21);
+    close(fd);
+    exit(1);
+  }
+
+  buffer[n] = '\0';
+  write(1, buffer, n);
+
+  close(fd);
+  exit(0);
 }

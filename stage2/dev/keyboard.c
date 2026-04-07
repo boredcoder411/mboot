@@ -5,6 +5,10 @@
 #include <stdbool.h>
 
 bool shifted = false;
+uint8_t keyboard_buffer[KEYBOARD_BUFFER_SIZE];
+uint16_t keyboard_buffer_head = 0;
+uint16_t keyboard_buffer_tail = 0;
+
 const char scancode_map[] = {
     0,   27,   '1',  '2', '3',  '4', '5', '6', '7', '8', '9', '0', '-',
     '=', '\b', '\t', 'q', 'w',  'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',
@@ -24,6 +28,17 @@ const char shift_scancode_map[] = {
     0,   0,    0,    0,   0,   0,   0,   0,   0,   '-', 0,   0,   0,
     '+', 0,    0,    0,   0,   0,   0,   0,   0,   0,   0,   0,
 };
+
+int keyboard_has_key() { return keyboard_buffer_head != keyboard_buffer_tail; }
+
+uint8_t keyboard_read_key() {
+  while (!keyboard_has_key()) {
+    asm volatile("pause");
+  }
+  uint8_t key = keyboard_buffer[keyboard_buffer_tail];
+  keyboard_buffer_tail = (keyboard_buffer_tail + 1) % KEYBOARD_BUFFER_SIZE;
+  return key;
+}
 
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 void keyboard_handler(registers_t *r) {
@@ -52,13 +67,16 @@ void keyboard_handler(registers_t *r) {
   }
 
   const char *map = shifted ? shift_scancode_map : scancode_map;
-  char ascii_char[3];
-  ascii_char[0] = map[scancode];
-  ascii_char[1] = '\n';
-  ascii_char[2] = '\0';
+  char ascii_char = map[scancode];
 
-  if (ascii_char[0]) {
-    serial_printf(ascii_char);
+  if (ascii_char) {
+    // Add to buffer
+    uint16_t next_head = (keyboard_buffer_head + 1) % KEYBOARD_BUFFER_SIZE;
+    if (next_head != keyboard_buffer_tail) { // Buffer not full
+      keyboard_buffer[keyboard_buffer_head] = ascii_char;
+      keyboard_buffer_head = next_head;
+    }
+    serial_printf("%c\n", ascii_char);
   }
 }
 
