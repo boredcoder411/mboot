@@ -11,6 +11,8 @@
 #include "elf.h"
 #include "fat16.h"
 #include "mem.h"
+#include "net/arp.h"
+#include "net/icmp.h"
 #include "utils.h"
 #include "vfs.h"
 #include <stdbool.h>
@@ -50,12 +52,12 @@ void loader_start(void) {
   uint8_t ping_ip[4] = {142, 251, 142, 14};
   uint8_t gateway_mac[6];
   STI();
-  e1k_send_arp_request(src_ip, gateway_ip);
+  arp_send_request(src_ip, gateway_ip);
 
   int resolved = 0;
   for (int i = 0; i < 12000000; ++i) {
     e1k_drain_rx();
-    if (e1k_try_get_arp_mac(gateway_ip, gateway_mac)) {
+    if (arp_try_get_mac(gateway_ip, gateway_mac)) {
       resolved = 1;
       break;
     }
@@ -63,7 +65,7 @@ void loader_start(void) {
   }
 
   if (resolved) {
-    e1k_send_icmp_echo(src_ip, ping_ip, gateway_mac, 0xB007, 1);
+    icmp_send_echo(src_ip, ping_ip, gateway_mac, 0xB007, 1);
   } else {
     INFO("MAIN", "failed to resolve gateway ARP, skipping ICMP echo");
   }

@@ -124,9 +124,5 @@ _Static_assert(sizeof(e1k_rx_desc_t) == 16, "RX descriptor must be 16 bytes");
 
 void e1k_init(nic_descriptor nic_desc);
 int e1k_send(void *frame, size_t len);
-void e1k_send_arp_request(uint8_t src_ip[4], uint8_t target_ip[4]);
 void e1k_drain_rx(void);
-int e1k_try_get_arp_mac(uint8_t target_ip[4], uint8_t out_mac[6]);
-int e1k_send_icmp_echo(uint8_t src_ip[4], uint8_t dst_ip[4],
-                       uint8_t next_hop_mac[6], uint16_t identifier,
-                       uint16_t sequence);
+void e1k_get_mac(uint8_t out_mac[6]);

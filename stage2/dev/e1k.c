@@ -6,11 +6,7 @@
 #include "dev/serial.h"
 #include "io.h"
 #include "mem.h"
-#include "net/arp.h"
 #include "net/eth.h"
-#include "net/icmp.h"
-#include "net/ipv4.h"
-#include "utils.h"
 
 nic_descriptor nic_e1k;
 
@@ -24,107 +20,8 @@ static uint32_t tx_tail = 0;
 static e1k_rx_desc_t *rx_ring = NULL;
 static uint8_t (*rx_bufs)[RX_BUF_SIZE] = NULL;
 static uint32_t rx_tail = 0;
-static uint8_t arp_cached_ip[4];
-static uint8_t arp_cached_mac[6];
-static int arp_cache_valid = 0;
 
 static inline int e1k_is_mmio(void) { return !(nic_e1k.desc.bar[0] & 0x1); }
-
-static void e1k_dump_bytes(const uint8_t *data, uint16_t len) {
-  message_preamble("E1K", LOG_INFO);
-  serial_printf("Raw bytes (%u bytes):\n", len);
-
-  for (uint16_t i = 0; i < len; ++i) {
-    if ((i % 16) == 0) {
-      message_preamble("E1K", LOG_INFO);
-      serial_printf("%03x: ", i);
-    }
-
-    serial_printf("%02x ", data[i]);
-
-    if ((i % 16) == 15 || i == (uint16_t)(len - 1)) {
-      write_serial('\n');
-    }
-  }
-}
-
-static uint16_t net_checksum(const void *data, size_t len) {
-  const uint8_t *bytes = (const uint8_t *)data;
-  uint32_t sum = 0;
-
-  while (len > 1) {
-    sum += ((uint32_t)bytes[0] << 8) | bytes[1];
-    bytes += 2;
-    len -= 2;
-  }
-
-  if (len != 0) {
-    sum += (uint32_t)bytes[0] << 8;
-  }
-
-  while ((sum >> 16) != 0) {
-    sum = (sum & 0xFFFF) + (sum >> 16);
-  }
-
-  return (uint16_t)~sum;
-}
-
-static int ip_equal(const uint8_t lhs[4], const uint8_t rhs[4]) {
-  for (int i = 0; i < 4; ++i) {
-    if (lhs[i] != rhs[i])
-      return 0;
-  }
-  return 1;
-}
-
-static void e1k_update_arp_cache(const uint8_t sender_ip[4],
-                                 const uint8_t sender_mac[6]) {
-  memcpy(arp_cached_ip, sender_ip, 4);
-  memcpy(arp_cached_mac, sender_mac, 6);
-  arp_cache_valid = 1;
-
-  INFO("E1K",
-       "ARP cache update: %d.%d.%d.%d is at %02x:%02x:%02x:%02x:%02x:%02x",
-       sender_ip[0], sender_ip[1], sender_ip[2], sender_ip[3], sender_mac[0],
-       sender_mac[1], sender_mac[2], sender_mac[3], sender_mac[4],
-       sender_mac[5]);
-}
-
-static void e1k_process_ipv4_packet(uint8_t *frame, uint16_t frame_len,
-                                    uint8_t *data, uint16_t len) {
-  if (len < sizeof(ipv4_hdr))
-    return;
-
-  ipv4_hdr *ipv4 = (ipv4_hdr *)data;
-  uint8_t version = ipv4->version_ihl >> 4;
-  uint8_t ihl = (ipv4->version_ihl & 0x0F) * 4;
-  uint16_t total_length = ntohs(ipv4->total_length);
-
-  if (version != 4 || ihl < sizeof(ipv4_hdr) || len < ihl ||
-      total_length < ihl || total_length > len) {
-    INFO("E1K", "Dropping malformed IPv4 packet");
-    return;
-  }
-
-  if (ipv4->protocol != IPV4_PROTOCOL_ICMP)
-    return;
-
-  uint8_t *icmp_data = data + ihl;
-  uint16_t icmp_len = total_length - ihl;
-
-  if (icmp_len < sizeof(icmp_echo_hdr))
-    return;
-
-  icmp_echo_hdr *icmp = (icmp_echo_hdr *)icmp_data;
-  if (icmp->type == ICMP_ECHO_REPLY && icmp->code == 0) {
-    INFO("E1K",
-         "ICMP echo reply from %d.%d.%d.%d id=0x%04x seq=%u payload=%u bytes",
-         ipv4->src_ip[0], ipv4->src_ip[1], ipv4->src_ip[2], ipv4->src_ip[3],
-         ntohs(icmp->identifier), ntohs(icmp->sequence),
-         icmp_len - sizeof(icmp_echo_hdr));
-    e1k_dump_bytes(frame, frame_len);
-  }
-}
 
 inline void e1k_write(uint32_t reg, uint32_t val) {
   if (e1k_is_mmio()) {
@@ -143,6 +40,8 @@ inline uint32_t e1k_read(uint32_t reg) {
     return inl(port);
   }
 }
+
+void e1k_get_mac(uint8_t out_mac[6]) { memcpy(out_mac, nic_e1k.mac, 6); }
 
 int e1k_detect_eeprom(void) {
   uint32_t val;
@@ -333,33 +232,7 @@ void e1k_rx_init(void) {
 }
 
 static void e1k_process_packet(uint8_t *data, uint16_t len) {
-  eth_hdr *eth = (eth_hdr *)data;
-
-  if (len < sizeof(eth_hdr))
-    return;
-
-  INFO("E1K", "RX packet: ethertype=0x%04x, len=%u", ntohs(eth->ethertype),
-       len);
-
-  if (ntohs(eth->ethertype) == 0x0806) {
-    arp_pkt *arp = (arp_pkt *)(data + sizeof(eth_hdr));
-    if (len < sizeof(eth_hdr) + sizeof(arp_pkt))
-      return;
-
-    INFO("E1K", "ARP opcode=%u, sender=%d.%d.%d.%d, target=%d.%d.%d.%d",
-         ntohs(arp->opcode), arp->sender_ip[0], arp->sender_ip[1],
-         arp->sender_ip[2], arp->sender_ip[3], arp->target_ip[0],
-         arp->target_ip[1], arp->target_ip[2], arp->target_ip[3]);
-
-    e1k_update_arp_cache(arp->sender_ip, arp->sender_mac);
-
-    if (ntohs(arp->opcode) == 1) {
-      INFO("E1K", "ARP request received - would send reply here");
-    }
-  } else if (ntohs(eth->ethertype) == 0x0800) {
-    e1k_process_ipv4_packet(data, len, data + sizeof(eth_hdr),
-                            len - sizeof(eth_hdr));
-  }
+  eth_process_packet(data, len);
 }
 
 void e1k_drain_rx(void) {
@@ -580,113 +453,4 @@ void e1k_init(nic_descriptor nic_desc) {
   e1k_tx_init();
   e1k_rx_init();
   e1k_irq_init();
-}
-
-void e1k_send_arp_request(uint8_t src_ip[4], uint8_t target_ip[4]) {
-  size_t frame_len = sizeof(eth_hdr) + sizeof(arp_pkt);
-  if (frame_len < 60)
-    frame_len = 60;
-
-  uint8_t *frame = kmalloc(frame_len);
-  memset(frame, 0, frame_len);
-
-  eth_hdr *eth = (eth_hdr *)frame;
-  memset(eth->dst, 0xFF, 6);
-  memcpy(eth->src, nic_e1k.mac, 6);
-  eth->ethertype = htons(0x0806);
-
-  arp_pkt *arp = (arp_pkt *)(frame + sizeof(eth_hdr));
-  arp->htype = htons(1);
-  arp->ptype = htons(0x0800);
-  arp->hlen = 6;
-  arp->plen = 4;
-  arp->opcode = htons(1);
-
-  memcpy(arp->sender_mac, nic_e1k.mac, 6);
-  memcpy(arp->sender_ip, src_ip, 4);
-  memset(arp->target_mac, 0x00, 6);
-  memcpy(arp->target_ip, target_ip, 4);
-
-  INFO("E1K", "Sending ARP request: who has %d.%d.%d.%d ? tell %d.%d.%d.%d",
-       target_ip[0], target_ip[1], target_ip[2], target_ip[3], src_ip[0],
-       src_ip[1], src_ip[2], src_ip[3]);
-
-  int r = e1k_send(frame, frame_len);
-  if (r != 0) {
-    INFO("E1K", "e1k_send failed with %d", r);
-  } else {
-    INFO("E1K", "ARP request sent successfully");
-  }
-
-  kfree(frame);
-}
-
-int e1k_try_get_arp_mac(uint8_t target_ip[4], uint8_t out_mac[6]) {
-  if (!arp_cache_valid || !ip_equal(target_ip, arp_cached_ip))
-    return 0;
-
-  memcpy(out_mac, arp_cached_mac, 6);
-  return 1;
-}
-
-int e1k_send_icmp_echo(uint8_t src_ip[4], uint8_t dst_ip[4],
-                       uint8_t next_hop_mac[6], uint16_t identifier,
-                       uint16_t sequence) {
-  static const uint8_t payload[] = "mboot-icmp";
-  const size_t payload_len = sizeof(payload) - 1;
-  const size_t packet_len =
-      sizeof(eth_hdr) + sizeof(ipv4_hdr) + sizeof(icmp_echo_hdr) + payload_len;
-  size_t frame_len = packet_len;
-
-  if (frame_len < 60)
-    frame_len = 60;
-
-  uint8_t *frame = kmalloc(frame_len);
-  memset(frame, 0, frame_len);
-
-  eth_hdr *eth = (eth_hdr *)frame;
-  memcpy(eth->dst, next_hop_mac, 6);
-  memcpy(eth->src, nic_e1k.mac, 6);
-  eth->ethertype = htons(0x0800);
-
-  ipv4_hdr *ipv4 = (ipv4_hdr *)(frame + sizeof(eth_hdr));
-  ipv4->version_ihl = 0x45;
-  ipv4->dscp_ecn = 0;
-  ipv4->total_length =
-      htons(sizeof(ipv4_hdr) + sizeof(icmp_echo_hdr) + payload_len);
-  ipv4->identification = htons(sequence);
-  ipv4->flags_fragment_offset = htons(0x4000);
-  ipv4->ttl = 64;
-  ipv4->protocol = IPV4_PROTOCOL_ICMP;
-  memcpy(ipv4->src_ip, src_ip, 4);
-  memcpy(ipv4->dst_ip, dst_ip, 4);
-  ipv4->header_checksum = 0;
-  ipv4->header_checksum = htons(net_checksum(ipv4, sizeof(ipv4_hdr)));
-
-  icmp_echo_hdr *icmp =
-      (icmp_echo_hdr *)(frame + sizeof(eth_hdr) + sizeof(ipv4_hdr));
-  icmp->type = ICMP_ECHO_REQUEST;
-  icmp->code = 0;
-  icmp->identifier = htons(identifier);
-  icmp->sequence = htons(sequence);
-
-  uint8_t *icmp_payload = (uint8_t *)(icmp + 1);
-  memcpy(icmp_payload, payload, payload_len);
-  icmp->checksum = 0;
-  icmp->checksum =
-      htons(net_checksum(icmp, sizeof(icmp_echo_hdr) + payload_len));
-
-  INFO("E1K",
-       "Sending ICMP echo: %d.%d.%d.%d via %02x:%02x:%02x:%02x:%02x:%02x",
-       dst_ip[0], dst_ip[1], dst_ip[2], dst_ip[3], next_hop_mac[0],
-       next_hop_mac[1], next_hop_mac[2], next_hop_mac[3], next_hop_mac[4],
-       next_hop_mac[5]);
-
-  int result = e1k_send(frame, frame_len);
-  if (result != 0) {
-    INFO("E1K", "Failed to send ICMP echo: %d", result);
-  }
-
-  kfree(frame);
-  return result;
 }

@@ -6,12 +6,12 @@
 
 #define PAGE_SIZE 4096
 
-typedef struct __attribute__((packed)) {
+typedef struct {
   uint64_t base;
   uint64_t length;
   uint32_t type;
   uint32_t acpi_extended_attributes;
-} e820_entry_t;
+} __attribute__((packed)) e820_entry_t;
 
 typedef struct block_header {
   size_t size;

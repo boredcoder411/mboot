@@ -10,9 +10,7 @@ void put_pixel(int x, int y, uint8_t color) {
   asm volatile("int $0x80" : : "a"(255), "b"(x), "c"(y), "d"(color));
 }
 
-void clear_screen(void) {
-  asm volatile("int $0x80" : : "a"(254));
-}
+void clear_screen(void) { asm volatile("int $0x80" : : "a"(254)); }
 
 uint8_t read_key(void) {
   uint8_t key;
@@ -20,9 +18,7 @@ uint8_t read_key(void) {
   return key;
 }
 
-void sleep_ms(uint32_t ms) {
-  asm volatile("int $0x80" : : "a"(252), "b"(ms));
-}
+void sleep_ms(uint32_t ms) { asm volatile("int $0x80" : : "a"(252), "b"(ms)); }
 
 int has_key(void) {
   int result;
@@ -63,9 +59,7 @@ int open(const char *pathname, int flags) {
 
 int close(int fd) {
   int ret;
-  asm volatile("int $0x80"
-               : "=a"(ret)
-               : "0"(__NR_close), "b"(fd));
+  asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_close), "b"(fd));
   return ret;
 }
 
@@ -215,6 +209,4 @@ void *malloc(uint32_t size) {
   return ptr;
 }
 
-void free(void *ptr) {
-  (void)ptr;
-}
+void free(void *ptr) { (void)ptr; }

@@ -2,8 +2,10 @@
 
 #include <stdint.h>
 
-typedef struct __attribute__((packed)) {
+typedef struct {
   uint8_t dst[6];
   uint8_t src[6];
   uint16_t ethertype;
-} eth_hdr;
+} __attribute__((packed)) eth_hdr;
+
+void eth_process_packet(uint8_t *data, uint16_t len);
