@@ -7,6 +7,7 @@
 #include "io.h"
 #include "mem.h"
 #include "net/eth.h"
+#include "utils.h"
 
 nic_descriptor nic_e1k;
 
@@ -399,17 +400,35 @@ void e1k_init(nic_descriptor nic_desc) {
 
   uint32_t bar0 = nic_e1k.desc.bar[0];
   uint64_t mmio_base_64 = 0;
+  
+  INFO("E1K", "BAR0=0x%08x, BAR1=0x%08x, BAR0_type=%s", 
+       bar0, nic_e1k.desc.bar[1], (bar0 & 0x1) ? "IO" : "MMIO");
+  
   if (bar0 & 0x1) {
     uint32_t io_base = bar0 & ~0x3U;
     nic_e1k.desc.io_base = (uintptr_t)io_base;
     INFO("E1K", "IO BAR detected: 0x%08x", io_base);
   } else {
-    uint32_t bar1 = nic_e1k.desc.bar[1];
-    mmio_base_64 = (((uint64_t)bar1) << 32) | (bar0 & ~0xFULL);
-
-    uint32_t mmio_base = (uint32_t)mmio_base_64;
-    nic_e1k.desc.io_base = (uintptr_t)mmio_base;
-    INFO("E1K", "MMIO base = 0x%08x", mmio_base);
+    // Check if this is a 64-bit MMIO BAR (bits 1-2 of BAR0 indicate type)
+    uint32_t bar_type = (bar0 >> 1) & 0x3;
+    
+    if (bar_type == 0) {
+      // 32-bit MMIO BAR
+      uint32_t mmio_base = bar0 & ~0xFULL;
+      nic_e1k.desc.io_base = (uintptr_t)mmio_base;
+      INFO("E1K", "32-bit MMIO base = 0x%08x", mmio_base);
+    } else if (bar_type == 2) {
+      // 64-bit MMIO BAR - combine BAR0 (lower) and BAR1 (upper)
+      uint32_t bar1 = nic_e1k.desc.bar[1];
+      mmio_base_64 = (((uint64_t)bar1) << 32) | (bar0 & ~0xFULL);
+      
+      uint32_t mmio_base = (uint32_t)mmio_base_64;
+      nic_e1k.desc.io_base = (uintptr_t)mmio_base;
+      INFO("E1K", "64-bit MMIO base = 0x%08x", mmio_base);
+    } else {
+      ERROR("E1K", "Unknown BAR0 type: %u", bar_type);
+      HALT();
+    }
   }
 
   e1k_write(E1K_REG_CTRL, E1K_CTRL_RST);
