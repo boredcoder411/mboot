@@ -1,4 +1,4 @@
-#include "./user/include/libc.h"
+#include "libc.h"
 
 static char buffer[256];
 
