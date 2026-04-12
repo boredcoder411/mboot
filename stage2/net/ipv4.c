@@ -1,6 +1,7 @@
 #include "net/ipv4.h"
 #include "dev/serial.h"
 #include "net/icmp.h"
+#include "net/udp.h"
 #include "utils.h"
 
 void ipv4_process_packet(uint8_t *frame, uint16_t frame_len, uint8_t *data,
@@ -27,6 +28,12 @@ void ipv4_process_packet(uint8_t *frame, uint16_t frame_len, uint8_t *data,
     uint8_t *icmp_data = data + ihl;
     uint16_t icmp_len = total_length - ihl;
     icmp_process_packet(frame, frame_len, ipv4, icmp_data, icmp_len);
+    break;
+  }
+  case IPV4_PROTOCOL_UDP: {
+    uint8_t *udp_data = data + ihl;
+    uint16_t udp_len = total_length - ihl;
+    udp_process_packet(frame, frame_len, ipv4, udp_data, udp_len);
     break;
   }
   }
