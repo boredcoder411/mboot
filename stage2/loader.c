@@ -13,6 +13,8 @@
 #include "mem.h"
 #include "net/arp.h"
 #include "net/icmp.h"
+#include "net/ipv4.h"
+#include "net/udp.h"
 #include "utils.h"
 #include "vfs.h"
 #include <stdbool.h>
@@ -51,6 +53,10 @@ void loader_start(void) {
   uint8_t gateway_ip[4] = {10, 0, 2, 2};
   uint8_t ping_ip[4] = {142, 251, 142, 14};
   uint8_t gateway_mac[6];
+  ipv4_set_address(src_ip);
+  udp_init();
+  INFO("MAIN", "Network ready: guest IPv4 %d.%d.%d.%d, UDP echo port %u",
+       src_ip[0], src_ip[1], src_ip[2], src_ip[3], 7);
   STI();
   arp_send_request(src_ip, gateway_ip);
 

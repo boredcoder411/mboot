@@ -3,6 +3,7 @@
 #include "dev/serial.h"
 #include "mem.h"
 #include "net/eth.h"
+#include "net/ipv4.h"
 #include "utils.h"
 
 static uint8_t arp_cached_ip[4];
@@ -42,7 +43,10 @@ void arp_process_packet(uint8_t *data, uint16_t len) {
   arp_update_cache(arp->sender_ip, arp->sender_mac);
 
   if (ntohs(arp->opcode) == 1) {
-    INFO("ARP", "ARP request received - would send reply here");
+    if (ipv4_is_local_address(arp->target_ip)) {
+      INFO("ARP", "ARP request targets local host, sending reply");
+      arp_send_reply(arp->sender_mac, arp->target_ip, arp->sender_ip);
+    }
   }
 }
 
@@ -83,6 +87,40 @@ void arp_send_request(uint8_t src_ip[4], uint8_t target_ip[4]) {
   }
 
   kfree(frame);
+}
+
+int arp_send_reply(const uint8_t target_mac[6], const uint8_t sender_ip[4],
+                   const uint8_t target_ip[4]) {
+  size_t frame_len = sizeof(eth_hdr) + sizeof(arp_pkt);
+  if (frame_len < 60)
+    frame_len = 60;
+
+  uint8_t *frame = kmalloc(frame_len);
+  memset(frame, 0, frame_len);
+
+  eth_hdr *eth = (eth_hdr *)frame;
+  memcpy(eth->dst, target_mac, 6);
+  e1k_get_mac(eth->src);
+  eth->ethertype = htons(0x0806);
+
+  arp_pkt *arp = (arp_pkt *)(frame + sizeof(eth_hdr));
+  arp->htype = htons(1);
+  arp->ptype = htons(0x0800);
+  arp->hlen = 6;
+  arp->plen = 4;
+  arp->opcode = htons(2);
+  e1k_get_mac(arp->sender_mac);
+  memcpy(arp->sender_ip, sender_ip, 4);
+  memcpy(arp->target_mac, target_mac, 6);
+  memcpy(arp->target_ip, target_ip, 4);
+
+  int result = e1k_send(frame, frame_len);
+  if (result != 0) {
+    INFO("ARP", "Failed to send ARP reply: %d", result);
+  }
+
+  kfree(frame);
+  return result;
 }
 
 int arp_try_get_mac(uint8_t target_ip[4], uint8_t out_mac[6]) {
