@@ -11,7 +11,6 @@ Running mboot needs:
  - qemu-system-x86_64
 
 ## Building
-Note: inside the makefile there is a line appending a macro definition to `CFLAGS`. Edit the macro's value to bundle different demos to run on boot
 ```sh
 make
 # normal os
@@ -54,17 +53,6 @@ On the guest serial log you should see:
 - an `RX a.b.c.d:src -> 10.0.2.15:7` log line
 - an `Echoing N bytes back to port src` log line
 
-## Demo options
-Demo options include:
-- `CUBE_DEMO`
-- `TIME_DEMO`
-- `E1K_DEMO`
-- `IMF_DEMO`
-- `PSF_DEMO`
-
-## Note
-As filesystems and elf files aren't implemented yet, programs you want to launch from mboot need to be linked into it and called from `loader.c`
-
 ## todo:
 - [x] 32 bit protected mode
 - [x] cpu exceptions
@@ -78,10 +66,11 @@ As filesystems and elf files aren't implemented yet, programs you want to launch
 - [x] the mbr partitioning scheme
 - [x] wad files as the filesystem
 - [x] enable x87 fpu
-- [ ] memory allocator
-- [ ] elf loader
+- [x] memory allocator
+- [x] elf loader
 - [ ] paging
 - [ ] libc
+- [ ] implement more demos to show syscalls working
 
 ## Screenshots
 ![mboot running in qemu](screenshots/mboot_sc.png)

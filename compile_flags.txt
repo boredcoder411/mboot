@@ -1,4 +1,3 @@
 -Iinc/
--Idemos/
 -m32
 -ffreestanding
