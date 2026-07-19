@@ -32,3 +32,11 @@ void jump_to_entry(void *elf_data) {
   INFO("ELF", "Jumping to entry point at 0x%x", eh->entry);
   entry();
 }
+
+extern void run_elf_with_args_asm(void *entry, int argc, char **argv);
+
+void run_elf_with_args(void *elf_data, int argc, char **argv) {
+  Elf32_Ehdr *eh = (Elf32_Ehdr *)elf_data;
+  INFO("ELF", "Running entry point at 0x%x with argc=%d", eh->entry, argc);
+  run_elf_with_args_asm((void *)(uintptr_t)eh->entry, argc, argv);
+}
