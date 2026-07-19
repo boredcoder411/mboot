@@ -30,6 +30,23 @@ int malloc_calls;
 int free_calls;
 #endif
 
+static void *load_file(const char *path, int *out_size) {
+  int file = open_file(path);
+  if (file < 0) {
+    INFO("MAIN", "error: could not find %s", path);
+    return NULL;
+  }
+
+  int size = fat16_get_size(file);
+  void *buf = kmalloc(size);
+  read_file(file, size, buf);
+  close_file(file);
+
+  INFO("MAIN", "%s loaded (%d bytes)", path, size);
+  if (out_size) *out_size = size;
+  return buf;
+}
+
 void loader_start(void) {
   for (int i = 0; i < IRQs; ++i) {
     pic_set_mask(i);
@@ -78,47 +95,21 @@ void loader_start(void) {
 
   fat16_init();
 
-  INFO("MAIN", "Loading test.elf...");
-  int file = open_file("/test.elf");
-  void *test_buf = NULL;
-  int test_size = 0;
-
-  if (file >= 0) {
-    test_size = fat16_get_size(file);
-    test_buf = kmalloc(test_size);
-    read_file(file, test_size, test_buf);
-    load_elf(test_buf);
-    close_file(file);
-    INFO("MAIN", "test.elf loaded successfully");
-  } else {
-    INFO("MAIN", "error: could not find test.elf");
-    while (1) {
-    }
+  void *lua_data = load_file("/lua.elf", NULL);
+  if (!lua_data) {
+    while (1) { asm volatile("hlt"); }
   }
 
-  Elf32_Ehdr *test_header = (Elf32_Ehdr *)test_buf;
-  entry_point_t test_entry = (entry_point_t)test_header->entry;
+  load_elf(lua_data);
 
-  kfree(test_buf);
+  //char *argv[] = {"lua", "-e", "print('hello from lua!')", NULL};
+  //int argc = 3;
+  char *argv[] = {"lua", "-v", NULL};
+  int argc = 2;
 
-  INFO("MAIN", "Jumping to test program at 0x%x", (uint32_t)test_entry);
-  test_entry();
+  INFO("MAIN", "Starting Lua...");
+  run_elf_with_args(lua_data, argc, argv);
 
-  INFO("MAIN", "if you see this message, the elf returned somehow.");
-
-#ifdef ALLOC_DBG
-  INFO("MAIN", "malloc called %d times, free called %d times", malloc_calls,
-       free_calls);
-#endif
-
-  while (1) {
-  }
-
-#ifdef ALLOC_DBG
-  INFO("MAIN", "malloc called %d times, free called %d times", malloc_calls,
-       free_calls);
-#endif
-
-  while (1) {
-  }
+  INFO("MAIN", "Lua returned (unexpected). Halting.");
+  while (1) { asm volatile("hlt"); }
 }

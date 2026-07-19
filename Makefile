@@ -24,6 +24,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 	nasm -f elf stage2/cpu/interrupts/idt.asm -o $(BUILD)/idt_s.o
 	nasm -f elf stage2/cpu/interrupts/isr.asm -o $(BUILD)/isr_s.o
 	nasm -f elf stage2/cpu/interrupts/irq.asm -o $(BUILD)/irq_s.o
+	nasm -f elf stage2/elf_trampoline.asm -o $(BUILD)/elf_trampoline.o
 	
 	$(CC) $(CFLAGS) stage2/loader.c -o $(BUILD)/loader.o
 	$(CC) $(CFLAGS) stage2/utils.c -o $(BUILD)/utils.o
@@ -80,13 +81,14 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 		$(BUILD)/icmp.o \
 		$(BUILD)/udp.o \
 		$(BUILD)/vfs.o \
-		$(BUILD)/elf.o
+		$(BUILD)/elf.o \
+		$(BUILD)/elf_trampoline.o
 	
 	$(OBJCOPY) --only-keep-debug kernel.elf kernel.sym
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
 
 image:
-	@./image.sh test_files/hi.txt build/libc.elf build/test.elf
+	@./image.sh test_files/hi.txt build/libc.elf build/test.elf build/lua.elf
 
 psf: tools/psf.c | $(BUILD)
 	gcc -o $(BUILD)/psf tools/psf.c -Iinc/ $$(pkg-config --cflags --libs libpng)
@@ -107,6 +109,9 @@ file_transforms: psf imf | $(BUILD)
 	$(LD) $(BUILD)/libc.o -Ttext 0x40000000 -m elf_i386 -static -o $(BUILD)/libc.elf
 	@echo "Creating test.elf..."
 	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/test.o -T user/linker_test.ld -m elf_i386 -static -o $(BUILD)/test.elf
+	@echo "Building Lua 5.5.0..."
+	$(MAKE) -C user/lua -j4
+	cp user/lua/lua $(BUILD)/lua.elf
 
 format:
 	@find . -type f \( -name "*.c" -o -name "*.h" \) -exec clang-format -i {} +
