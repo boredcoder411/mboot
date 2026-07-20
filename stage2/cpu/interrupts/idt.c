@@ -1,5 +1,4 @@
 #include "cpu/interrupts/idt.h"
-#include "dev/keyboard.h"
 #include "dev/serial.h"
 #include "io.h"
 #include "vfs.h"
@@ -14,15 +13,59 @@ void syscall_dispatch(registers_t *r) {
     break;
   }
   case 3: { // sys_read
-    if (r->ebx == 0) {
-      if (keyboard_has_key()) {
-        uint8_t key = keyboard_read_key();
-        if (r->ecx && r->edx > 0) {
-          *(uint8_t *)r->ecx = key;
-          r->eax = 1;
-        } else {
-          r->eax = -1;
+    if (r->ebx == 0) { // stdin — line-buffered serial with echo
+      static char line_buf[256];
+      static int line_fill = 0;
+      static int line_pos = 0;
+
+      // Drain already-buffered line
+      if (line_pos < line_fill) {
+        uint32_t take = r->edx;
+        if ((uint32_t)(line_fill - line_pos) < take)
+          take = line_fill - line_pos;
+        uint8_t *dst = (uint8_t *)r->ecx;
+        for (uint32_t i = 0; i < take; i++)
+          dst[i] = line_buf[line_pos++];
+        r->eax = take;
+        break;
+      }
+
+      // Read a fresh line from serial with echo
+      line_fill = 0;
+      line_pos = 0;
+      for (;;) {
+        uint8_t c = read_serial();
+        if (c == '\r') c = '\n';
+        if (c == '\b' || c == 0x7F) {
+          if (line_fill > 0) {
+            line_fill--;
+            write_serial('\b');
+            write_serial(' ');
+            write_serial('\b');
+          }
+        } else if (c == '\n') {
+          if (line_fill < (int)sizeof(line_buf))
+            line_buf[line_fill++] = '\n';
+          write_serial('\r');
+          write_serial('\n');
+          break;
+        } else if (c >= ' ' && c < 0x7F) {
+          if (line_fill < (int)sizeof(line_buf) - 1) {
+            line_buf[line_fill++] = c;
+            write_serial(c);
+          }
         }
+      }
+
+      // Return first byte(s)
+      if (line_fill > 0) {
+        uint32_t take = r->edx;
+        if ((uint32_t)line_fill < take)
+          take = line_fill;
+        uint8_t *dst = (uint8_t *)r->ecx;
+        for (uint32_t i = 0; i < take; i++)
+          dst[i] = line_buf[line_pos++];
+        r->eax = take;
       } else {
         r->eax = 0;
       }
@@ -92,7 +135,7 @@ void idt_init() {
     idt_set_gate(i, 0, 0, 0);
   }
 
-  idt_set_gate(0x80, (uint32_t)syscall_handler, 0x08, 0xEE);
+  idt_set_gate(0x80, (uint32_t)syscall_handler, 0x08, 0xEF);
 
   idt_load((uint32_t)&idt_ptr);
 }

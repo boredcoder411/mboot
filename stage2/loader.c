@@ -102,9 +102,7 @@ void loader_start(void) {
 
   load_elf(lua_data);
 
-  //char *argv[] = {"lua", "-e", "print('hello from lua!')", NULL};
-  //int argc = 3;
-  char *argv[] = {"lua", "-v", NULL};
+  char *argv[] = {"lua", "/test.lua", NULL};
   int argc = 2;
 
   INFO("MAIN", "Starting Lua...");

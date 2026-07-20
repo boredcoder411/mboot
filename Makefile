@@ -87,8 +87,8 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 	$(OBJCOPY) --only-keep-debug kernel.elf kernel.sym
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
 
-image:
-	@./image.sh test_files/hi.txt build/libc.elf build/test.elf build/lua.elf
+image: file_transforms
+	@./image.sh test_files/hi.txt build/libc.elf build/test.elf build/lua.elf test_files/test.lua
 
 psf: tools/psf.c | $(BUILD)
 	gcc -o $(BUILD)/psf tools/psf.c -Iinc/ $$(pkg-config --cflags --libs libpng)

@@ -23,6 +23,7 @@ run_elf_with_args_asm:
     mov eax, [esp+12]     ; argv (char**)
 
     push dword 0          ; envp[0] = NULL
+    push dword 0          ; argv terminator = NULL (pushed before args so it ends up after them)
 
     ; Push argv entries in reverse order (last to first)
     mov esi, edx          ; esi = argc
@@ -40,7 +41,6 @@ run_elf_with_args_asm:
     jnz .loop
 
 .done:
-    push dword 0          ; argv terminator = NULL
     push edx              ; argc
 
     jmp ecx               ; jump to entry (stack now matches Linux convention)

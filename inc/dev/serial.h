@@ -10,6 +10,8 @@ typedef enum { LOG_INFO, LOG_WARN, LOG_ERROR, LOG_DEBUG } log_level_t;
 
 int init_serial();
 void write_serial(char a);
+char read_serial(void);
+int serial_has_data(void);
 void message_preamble(const char *module, log_level_t level);
 void serial_printf(const char *fmt, ...);
 

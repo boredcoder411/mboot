@@ -795,19 +795,66 @@ int vsnprintf(char *str, size_t size, const char *format, va_list ap) {
       continue;
     }
     format++;
+    int width = 0;
     int precision = -1;
+    int long_flag = 0;
+
+    if (*format == '-') { format++; }
+    if (*format == '0') { format++; }
+    while (*format >= '0' && *format <= '9') { width = width * 10 + (*format - '0'); format++; }
     if (*format == '.') { format++; precision = 0; while (*format >= '0' && *format <= '9') { precision = precision * 10 + (*format - '0'); format++; } }
+    if (*format == 'l') { long_flag = 1; format++; }
+    if (*format == 'z') { format++; }
+
     switch (*format) {
-      case 'd': case 'i': { int val = va_arg(ap, int); __print_int(&str, &pos, size, val, 10, 0); break; }
-      case 'u': { unsigned long val = va_arg(ap, unsigned int); __print_unsigned(&str, &pos, size, val, 10, 0); break; }
-      case 'x': { unsigned long val = va_arg(ap, unsigned int); __print_unsigned(&str, &pos, size, val, 16, 0); break; }
-      case 'X': { unsigned long val = va_arg(ap, unsigned int); __print_unsigned(&str, &pos, size, val, 16, 1); break; }
-      case 'p': { unsigned long val = (unsigned long)va_arg(ap, void *); __print_str(&str, &pos, size, "0x"); __print_unsigned(&str, &pos, size, val, 16, 0); break; }
-      case 's': { const char *s = va_arg(ap, const char *); if (!s) s = "(null)"; __print_str(&str, &pos, size, s); break; }
-      case 'c': { char c = (char)va_arg(ap, int); __print_char(&str, &pos, size, c); break; }
-      case 'f': { double val = va_arg(ap, double); __print_double(&str, &pos, size, val, precision); break; }
-      case '%': { __print_char(&str, &pos, size, '%'); break; }
-      default: break;
+      case 'd': case 'i': {
+        int val = long_flag ? va_arg(ap, long) : va_arg(ap, int);
+        __print_int(&str, &pos, size, val, 10, 0);
+        break;
+      }
+      case 'u': {
+        unsigned long val = long_flag ? va_arg(ap, unsigned long) : va_arg(ap, unsigned int);
+        __print_unsigned(&str, &pos, size, val, 10, 0);
+        break;
+      }
+      case 'x': {
+        unsigned long val = long_flag ? va_arg(ap, unsigned long) : va_arg(ap, unsigned int);
+        __print_unsigned(&str, &pos, size, val, 16, 0);
+        break;
+      }
+      case 'X': {
+        unsigned long val = long_flag ? va_arg(ap, unsigned long) : va_arg(ap, unsigned int);
+        __print_unsigned(&str, &pos, size, val, 16, 1);
+        break;
+      }
+      case 'p': {
+        unsigned long val = (unsigned long)va_arg(ap, void *);
+        __print_str(&str, &pos, size, "0x");
+        __print_unsigned(&str, &pos, size, val, 16, 0);
+        break;
+      }
+      case 's': {
+        const char *s = va_arg(ap, const char *);
+        if (!s) s = "(null)";
+        __print_str(&str, &pos, size, s);
+        break;
+      }
+      case 'c': {
+        char c = (char)va_arg(ap, int);
+        __print_char(&str, &pos, size, c);
+        break;
+      }
+      case 'f': {
+        double val = va_arg(ap, double);
+        __print_double(&str, &pos, size, val, precision);
+        break;
+      }
+      case '%': {
+        __print_char(&str, &pos, size, '%');
+        break;
+      }
+      default:
+        break;
     }
     format++;
   }
