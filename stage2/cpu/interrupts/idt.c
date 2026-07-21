@@ -70,7 +70,10 @@ void syscall_dispatch(registers_t *r) {
         r->eax = 0;
       }
     } else if (r->ebx > 2) {
-      r->eax = read_file(r->ebx - 3, r->edx, (void *)r->ecx);
+      uint32_t fd = r->ebx - 3;
+      INFO("SYSCALL", "read(fd=%u, count=%u)", fd, r->edx);
+      r->eax = read_file(fd, r->edx, (void *)r->ecx);
+      INFO("SYSCALL", "read -> %d", r->eax);
     } else {
       r->eax = -1;
     }
@@ -79,6 +82,7 @@ void syscall_dispatch(registers_t *r) {
   case 4: { // sys_write
     if (r->ebx == 1 || r->ebx == 2) {
       if (r->ecx && r->edx > 0) {
+        INFO("SYSCALL", "write(fd=%u, len=%u)", r->ebx, r->edx);
         const char *buf = (const char *)r->ecx;
         for (uint32_t i = 0; i < r->edx; i++) {
           write_serial(buf[i]);

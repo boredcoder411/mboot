@@ -1,4 +1,5 @@
 #include "dev/disk.h"
+#include "dev/serial.h"
 #include "io.h"
 #include "utils.h"
 
@@ -20,22 +21,27 @@ void ata_lba_read(uint32_t lba, uint8_t sector_count, void *buffer,
                   uint8_t drive) {
   uint8_t drive_select = (drive & 1) ? 0xF0 : 0xE0;
 
-  outb(0x1F6, drive_select | ((lba >> 24) & 0x0F));
+  ata_wait_busy_clear();
 
+  outb(0x1F6, drive_select | ((lba >> 24) & 0x0F));
   outb(0x1F2, sector_count);
   outb(0x1F3, (uint8_t)lba);
   outb(0x1F4, (uint8_t)(lba >> 8));
   outb(0x1F5, (uint8_t)(lba >> 16));
-
   outb(0x1F7, 0x20);
 
   for (uint8_t s = 0; s < sector_count; s++) {
     uint8_t status;
+    uint32_t timeout = 10000000;
 
     do {
       status = inb(ATA_REG_STATUS);
       if (status & 0x01) {
-        HALT()
+        WARN("DISK", "ATA error on LBA %u", lba + s);
+        return;
+      }
+      if (--timeout == 0) {
+        WARN("DISK", "ATA timeout on LBA %u (status=0x%02x)", lba + s, status);
         return;
       }
     } while ((status & 0x88) != 0x08);

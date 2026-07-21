@@ -666,8 +666,9 @@ static void __print_unsigned(char **str, size_t *pos, size_t max, unsigned long 
   while (i > 0) __print_char(str, pos, max, buf[--i]);
 }
 
-static void __print_double(char **str, size_t *pos, size_t max, double val, int precision) {
+static void __print_double_f(char **str, size_t *pos, size_t max, double val, int precision) {
   if (precision < 0) precision = 6;
+  size_t start = *pos;
   if (val < 0) {
     __print_char(str, pos, max, '-');
     val = -val;
@@ -686,8 +687,45 @@ static void __print_double(char **str, size_t *pos, size_t max, double val, int 
   }
 }
 
+static void __print_double_g(char **str, size_t *pos, size_t max, double val, int precision) {
+  if (precision < 0) precision = 6;
+  size_t start = *pos;
+  if (val < 0) {
+    __print_char(str, pos, max, '-');
+    start = *pos;
+    val = -val;
+  }
+  unsigned long long int_part = (unsigned long long)val;
+  __print_unsigned(str, pos, max, int_part, 10, 0);
+  double frac = val - (double)int_part;
+  size_t before_frac = *pos;
+  size_t dot_pos = (size_t)-1;
+  int any_nonzero = 0;
+  if (precision > 0) {
+    __print_char(str, pos, max, '.');
+    dot_pos = before_frac;
+    for (int i = 0; i < precision; i++) {
+      frac *= 10.0;
+      int d = (int)frac;
+      __print_char(str, pos, max, '0' + d);
+      if (d != 0) any_nonzero = 1;
+      frac -= d;
+    }
+  }
+  if (!any_nonzero && dot_pos != (size_t)-1) {
+    *pos = dot_pos;
+  } else if (any_nonzero) {
+    char *base = str && *str ? *str : NULL;
+    size_t end = *pos;
+    while (end > dot_pos + 1 && base && base[end - 1] == '0')
+      end--;
+    *pos = end;
+  }
+}
+
 static int __vfprintf(FILE *stream, const char *format, va_list ap) {
   char buf[4096];
+  char *buf_ptr = buf;
   size_t pos = 0;
   while (*format) {
     if (*format != '%') {
@@ -713,53 +751,53 @@ static int __vfprintf(FILE *stream, const char *format, va_list ap) {
     switch (*format) {
       case 'd': case 'i': {
         int val = va_arg(ap, int);
-        __print_int(NULL, &pos, sizeof(buf), val, 10, 0);
+        __print_int(&buf_ptr, &pos, sizeof(buf), val, 10, 0);
         break;
       }
       case 'u': {
         unsigned long val = long_flag ? va_arg(ap, unsigned long) : va_arg(ap, unsigned int);
-        __print_unsigned(NULL, &pos, sizeof(buf), val, 10, 0);
+        __print_unsigned(&buf_ptr, &pos, sizeof(buf), val, 10, 0);
         break;
       }
       case 'x': {
         unsigned long val = long_flag ? va_arg(ap, unsigned long) : va_arg(ap, unsigned int);
-        __print_unsigned(NULL, &pos, sizeof(buf), val, 16, 0);
+        __print_unsigned(&buf_ptr, &pos, sizeof(buf), val, 16, 0);
         break;
       }
       case 'X': {
         unsigned long val = long_flag ? va_arg(ap, unsigned long) : va_arg(ap, unsigned int);
-        __print_unsigned(NULL, &pos, sizeof(buf), val, 16, 1);
+        __print_unsigned(&buf_ptr, &pos, sizeof(buf), val, 16, 1);
         break;
       }
       case 'p': {
         unsigned long val = (unsigned long)va_arg(ap, void *);
-        __print_str(NULL, &pos, sizeof(buf), "0x");
-        __print_unsigned(NULL, &pos, sizeof(buf), val, 16, 0);
+        __print_str(&buf_ptr, &pos, sizeof(buf), "0x");
+        __print_unsigned(&buf_ptr, &pos, sizeof(buf), val, 16, 0);
         break;
       }
       case 's': {
         const char *s = va_arg(ap, const char *);
         if (!s) s = "(null)";
-        __print_str(NULL, &pos, sizeof(buf), s);
+        __print_str(&buf_ptr, &pos, sizeof(buf), s);
         break;
       }
       case 'c': {
         char c = (char)va_arg(ap, int);
-        __print_char(NULL, &pos, sizeof(buf), c);
+        __print_char(&buf_ptr, &pos, sizeof(buf), c);
         break;
       }
       case 'f': {
         double val = va_arg(ap, double);
-        __print_double(NULL, &pos, sizeof(buf), val, precision);
+        __print_double_f(&buf_ptr, &pos, sizeof(buf), val, precision);
         break;
       }
       case 'g': case 'G': {
         double val = va_arg(ap, double);
-        __print_double(NULL, &pos, sizeof(buf), val, precision);
+        __print_double_g(&buf_ptr, &pos, sizeof(buf), val, precision);
         break;
       }
       case '%': {
-        __print_char(NULL, &pos, sizeof(buf), '%');
+        __print_char(&buf_ptr, &pos, sizeof(buf), '%');
         break;
       }
       default:
@@ -846,7 +884,13 @@ int vsnprintf(char *str, size_t size, const char *format, va_list ap) {
       }
       case 'f': {
         double val = va_arg(ap, double);
-        __print_double(&str, &pos, size, val, precision);
+        __print_double_f(&str, &pos, size, val, precision);
+        break;
+      }
+      case 'e': case 'E':
+      case 'g': case 'G': {
+        double val = va_arg(ap, double);
+        __print_double_g(&str, &pos, size, val, precision);
         break;
       }
       case '%': {
@@ -1060,17 +1104,90 @@ double sinh(double x) { return __builtin_sinh(x); }
 double tan(double x) { return __builtin_tan(x); }
 double tanh(double x) { return __builtin_tanh(x); }
 double exp(double x) { return __builtin_exp(x); }
-double frexp(double x, int *exp) { return __builtin_frexp(x, exp); }
-double ldexp(double x, int exp) { return __builtin_ldexp(x, exp); }
+double frexp(double x, int *exp) {
+  double sig;
+  if (x == 0.0 || __builtin_isinf(x) || __builtin_isnan(x)) {
+    *exp = 0;
+    return x;
+  }
+  __asm__ __volatile__(
+    "fldl %2\n"
+    "fxtract\n"
+    "fstpl %0\n"
+    "fistpl %1\n"
+    : "=m"(sig), "=m"(*exp)
+    : "m"(x)
+    : "st", "st(1)"
+  );
+  sig = sig / 2.0;
+  *exp = *exp + 1;
+  return sig;
+}
+double ldexp(double x, int exp) {
+  double result;
+  __asm__ __volatile__(
+    "fildl %2\n"
+    "fldl %1\n"
+    "fscale\n"
+    "fstpl %0\n"
+    "fstp %%st(0)\n"
+    : "=m"(result)
+    : "m"(x), "m"(exp)
+    : "st", "st(1)"
+  );
+  return result;
+}
 double log(double x) { return __builtin_log(x); }
 double log2(double x) { return __builtin_log2(x); }
 double log10(double x) { return __builtin_log10(x); }
 double pow(double x, double y) { return __builtin_pow(x, y); }
-double sqrt(double x) { return __builtin_sqrt(x); }
-double ceil(double x) { return __builtin_ceil(x); }
-double fabs(double x) { return __builtin_fabs(x); }
-double floor(double x) { return __builtin_floor(x); }
-double fmod(double x, double y) { return __builtin_fmod(x, y); }
+double sqrt(double x) {
+  double result;
+  __asm__ __volatile__("fldl %1\n fsqrt\n fstpl %0" : "=m"(result) : "m"(x) : "st");
+  return result;
+}
+double ceil(double x) {
+  unsigned short cw, cw_new;
+  double result;
+  __asm__ __volatile__("fnstcw %0" : "=m"(cw));
+  cw_new = (cw & ~0x0C00) | 0x0800;
+  __asm__ __volatile__("fldcw %0" : : "m"(cw_new));
+  __asm__ __volatile__("fldl %1\n frndint\n fstpl %0" : "=m"(result) : "m"(x) : "st");
+  __asm__ __volatile__("fldcw %0" : : "m"(cw));
+  return result;
+}
+double fabs(double x) {
+  double result;
+  __asm__ __volatile__("fldl %1\n fabs\n fstpl %0" : "=m"(result) : "m"(x) : "st");
+  return result;
+}
+double floor(double x) {
+  unsigned short cw, cw_new;
+  double result;
+  __asm__ __volatile__("fnstcw %0" : "=m"(cw));
+  cw_new = (cw & ~0x0C00) | 0x0400;
+  __asm__ __volatile__("fldcw %0" : : "m"(cw_new));
+  __asm__ __volatile__("fldl %1\n frndint\n fstpl %0" : "=m"(result) : "m"(x) : "st");
+  __asm__ __volatile__("fldcw %0" : : "m"(cw));
+  return result;
+}
+double fmod(double x, double y) {
+  double result;
+  __asm__ __volatile__(
+    "fldl %2\n"
+    "fldl %1\n"
+    "1: fprem\n"
+    "fstsw %%ax\n"
+    "sahf\n"
+    "jp 1b\n"
+    "fstpl %0\n"
+    "fstp %%st(0)\n"
+    : "=m"(result)
+    : "m"(x), "m"(y)
+    : "st", "st(1)", "ax"
+  );
+  return result;
+}
 
 int fpclassify(double x) { return __builtin_fpclassify(FP_NAN, FP_INFINITE, FP_NORMAL, FP_SUBNORMAL, FP_ZERO, x); }
 int isfinite(double x) { return __builtin_isfinite(x); }
