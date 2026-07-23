@@ -17,6 +17,8 @@
 #include "net/udp.h"
 #include "utils.h"
 #include "vfs.h"
+#include "cpu/gdt.h"
+#include "scheduler.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -29,6 +31,20 @@ extern void enable_fpu(void);
 int malloc_calls;
 int free_calls;
 #endif
+
+void demo_task1() {
+  while (1) {
+    INFO("TASK1", "Hello from task 1");
+    for (volatile int i = 0; i < 10000000; i++);
+  }
+}
+
+void demo_task2() {
+  while (1) {
+    INFO("TASK2", "Hello from task 2");
+    for (volatile int i = 0; i < 10000000; i++);
+  }
+}
 
 static void *load_file(const char *path, int *out_size) {
   int file = open_file(path);
@@ -74,6 +90,15 @@ void loader_start(void) {
   udp_init();
   INFO("MAIN", "Network ready: guest IPv4 %d.%d.%d.%d, UDP echo port %u",
        src_ip[0], src_ip[1], src_ip[2], src_ip[3], 7);
+  gdt_init();
+  scheduler_init();
+  pic_clear_mask(0);
+  install_irq(0, NULL);
+  create_task(demo_task1);
+  create_task(demo_task2);
+  uint32_t esp;
+  asm("mov %%esp, %0" : "=r"(esp));
+  tss_set_stack(esp, GDT_DATA_SEG);
   STI();
   arp_send_request(src_ip, gateway_ip);
 

@@ -19,7 +19,7 @@ $(BUILD):
 stage1: stage1/boot.asm | $(BUILD)
 	nasm -f bin stage1/boot.asm -o boot.bin
 
-stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c stage2/io.c stage2/dev/disk.c stage2/dev/serial.c stage2/fat16.c stage2/cpu/interrupts/idt.c stage2/cpu/interrupts/isr.asm stage2/cpu/interrupts/isr.c stage2/cpu/interrupts/irq.asm stage2/cpu/interrupts/irq.c stage2/cpu/pic/pic.c stage2/cpu/pit/pit.c stage2/dev/keyboard.c stage2/mem.c stage2/dev/rtc.c stage2/dev/pci.c stage2/dev/pci_devices.c stage2/dev/e1k.c stage2/net/eth.c stage2/net/arp.c stage2/net/ipv4.c stage2/net/icmp.c stage2/net/udp.c stage2/vfs.c stage2/elf.c | $(BUILD)
+stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c stage2/io.c stage2/dev/disk.c stage2/dev/serial.c stage2/fat16.c stage2/cpu/interrupts/idt.c stage2/cpu/interrupts/isr.asm stage2/cpu/interrupts/isr.c stage2/cpu/interrupts/irq.asm stage2/cpu/interrupts/irq.c stage2/cpu/pic/pic.c stage2/cpu/pit/pit.c stage2/dev/keyboard.c stage2/mem.c stage2/dev/rtc.c stage2/dev/pci.c stage2/dev/pci_devices.c stage2/dev/e1k.c stage2/net/eth.c stage2/net/arp.c stage2/net/ipv4.c stage2/net/icmp.c stage2/net/udp.c stage2/vfs.c stage2/elf.c stage2/cpu/gdt.c stage2/scheduler.c | $(BUILD)
 	nasm -f elf stage2/start_loader.asm -o $(BUILD)/start_loader.o
 	nasm -f elf stage2/cpu/interrupts/idt.asm -o $(BUILD)/idt_s.o
 	nasm -f elf stage2/cpu/interrupts/isr.asm -o $(BUILD)/isr_s.o
@@ -51,6 +51,8 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 	$(CC) $(CFLAGS) stage2/net/udp.c -o $(BUILD)/udp.o
 	$(CC) $(CFLAGS) stage2/vfs.c -o $(BUILD)/vfs.o
 	$(CC) $(CFLAGS) stage2/elf.c -o $(BUILD)/elf.o
+	$(CC) $(CFLAGS) stage2/cpu/gdt.c -o $(BUILD)/gdt.o
+	$(CC) $(CFLAGS) stage2/scheduler.c -o $(BUILD)/scheduler.o
 
 	$(LD) $(LDFLAGS) \
 		$(BUILD)/start_loader.o \
@@ -82,7 +84,9 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 		$(BUILD)/udp.o \
 		$(BUILD)/vfs.o \
 		$(BUILD)/elf.o \
-		$(BUILD)/elf_trampoline.o
+		$(BUILD)/elf_trampoline.o \
+		$(BUILD)/gdt.o \
+		$(BUILD)/scheduler.o
 	
 	$(OBJCOPY) --only-keep-debug kernel.elf kernel.sym
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
