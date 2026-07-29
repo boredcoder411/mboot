@@ -68,7 +68,7 @@ On the guest serial log you should see:
 - [x] enable x87 fpu
 - [x] memory allocator
 - [x] elf loader
-- [ ] paging
+- [x] paging
 - [ ] libc
 - [ ] implement more demos to show syscalls working
 

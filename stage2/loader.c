@@ -15,6 +15,7 @@
 #include "net/icmp.h"
 #include "net/ipv4.h"
 #include "net/udp.h"
+#include "paging.h"
 #include "utils.h"
 #include "vfs.h"
 #include "cpu/gdt.h"
@@ -80,6 +81,7 @@ void loader_start(void) {
   e820_entry_t *mem_map = E820_TABLE_ADDR;
   uint16_t entry_count = *E820_ENTRY_COUNT_ADDR;
   init_alloc(entry_count, mem_map);
+  paging_init();
 
   pci_enumerate();
   uint8_t src_ip[4] = {10, 0, 2, 15};
