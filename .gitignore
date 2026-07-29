@@ -6,3 +6,6 @@ image.img
 build/
 assets.wad
 *.pcap
+user/lua/liblua.a
+user/lua/lua
+user/lua/luac

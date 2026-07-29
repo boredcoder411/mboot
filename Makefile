@@ -19,11 +19,12 @@ $(BUILD):
 stage1: stage1/boot.asm | $(BUILD)
 	nasm -f bin stage1/boot.asm -o boot.bin
 
-stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c stage2/io.c stage2/dev/disk.c stage2/dev/serial.c stage2/fat16.c stage2/cpu/interrupts/idt.c stage2/cpu/interrupts/isr.asm stage2/cpu/interrupts/isr.c stage2/cpu/interrupts/irq.asm stage2/cpu/interrupts/irq.c stage2/cpu/pic/pic.c stage2/cpu/pit/pit.c stage2/dev/keyboard.c stage2/mem.c stage2/dev/rtc.c stage2/dev/pci.c stage2/dev/pci_devices.c stage2/dev/e1k.c stage2/net/eth.c stage2/net/arp.c stage2/net/ipv4.c stage2/net/icmp.c stage2/net/udp.c stage2/vfs.c stage2/elf.c | $(BUILD)
+stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c stage2/io.c stage2/dev/disk.c stage2/dev/serial.c stage2/fat16.c stage2/cpu/interrupts/idt.c stage2/cpu/interrupts/isr.asm stage2/cpu/interrupts/isr.c stage2/cpu/interrupts/irq.asm stage2/cpu/interrupts/irq.c stage2/cpu/pic/pic.c stage2/cpu/pit/pit.c stage2/dev/keyboard.c stage2/mem.c stage2/paging.c stage2/dev/rtc.c stage2/dev/pci.c stage2/dev/pci_devices.c stage2/dev/e1k.c stage2/net/eth.c stage2/net/arp.c stage2/net/ipv4.c stage2/net/icmp.c stage2/net/udp.c stage2/vfs.c stage2/elf.c stage2/cpu/gdt.c stage2/scheduler.c | $(BUILD)
 	nasm -f elf stage2/start_loader.asm -o $(BUILD)/start_loader.o
 	nasm -f elf stage2/cpu/interrupts/idt.asm -o $(BUILD)/idt_s.o
 	nasm -f elf stage2/cpu/interrupts/isr.asm -o $(BUILD)/isr_s.o
 	nasm -f elf stage2/cpu/interrupts/irq.asm -o $(BUILD)/irq_s.o
+	nasm -f elf stage2/elf_trampoline.asm -o $(BUILD)/elf_trampoline.o
 	
 	$(CC) $(CFLAGS) stage2/loader.c -o $(BUILD)/loader.o
 	$(CC) $(CFLAGS) stage2/utils.c -o $(BUILD)/utils.o
@@ -39,6 +40,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 	$(CC) $(CFLAGS) stage2/cpu/pit/pit.c -o $(BUILD)/pit.o
 	$(CC) $(CFLAGS) stage2/dev/keyboard.c -o $(BUILD)/keyboard.o
 	$(CC) $(CFLAGS) stage2/mem.c -o $(BUILD)/mem.o
+	$(CC) $(CFLAGS) stage2/paging.c -o $(BUILD)/paging.o
 	$(CC) $(CFLAGS) stage2/dev/rtc.c -o $(BUILD)/rtc.o
 	$(CC) $(CFLAGS) stage2/dev/pci.c -o $(BUILD)/pci.o
 	$(CC) $(CFLAGS) stage2/dev/pci_devices.c -o $(BUILD)/pci_devices.o
@@ -50,6 +52,8 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 	$(CC) $(CFLAGS) stage2/net/udp.c -o $(BUILD)/udp.o
 	$(CC) $(CFLAGS) stage2/vfs.c -o $(BUILD)/vfs.o
 	$(CC) $(CFLAGS) stage2/elf.c -o $(BUILD)/elf.o
+	$(CC) $(CFLAGS) stage2/cpu/gdt.c -o $(BUILD)/gdt.o
+	$(CC) $(CFLAGS) stage2/scheduler.c -o $(BUILD)/scheduler.o
 
 	$(LD) $(LDFLAGS) \
 		$(BUILD)/start_loader.o \
@@ -70,6 +74,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 		$(BUILD)/pit.o \
 		$(BUILD)/keyboard.o \
 		$(BUILD)/mem.o \
+		$(BUILD)/paging.o \
 		$(BUILD)/rtc.o \
 		$(BUILD)/pci.o \
 		$(BUILD)/pci_devices.o \
@@ -80,13 +85,16 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 		$(BUILD)/icmp.o \
 		$(BUILD)/udp.o \
 		$(BUILD)/vfs.o \
-		$(BUILD)/elf.o
+		$(BUILD)/elf.o \
+		$(BUILD)/elf_trampoline.o \
+		$(BUILD)/gdt.o \
+		$(BUILD)/scheduler.o
 	
 	$(OBJCOPY) --only-keep-debug kernel.elf kernel.sym
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
 
-image:
-	@./image.sh test_files/hi.txt build/libc.elf build/test.elf
+image: file_transforms
+	@./image.sh test_files/hi.txt build/libc.elf build/test.elf build/lua.elf build/demo1.elf build/demo2.elf test_files/init.lua test_files/test.lua
 
 psf: tools/psf.c | $(BUILD)
 	gcc -o $(BUILD)/psf tools/psf.c -Iinc/ $$(pkg-config --cflags --libs libpng)
@@ -101,12 +109,21 @@ file_transforms: psf imf | $(BUILD)
 	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c user/src/libc.c -o $(BUILD)/libc.o
 	@echo "Building test program as separate object..."
 	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c test_files/test.c -o $(BUILD)/test.o
+	@echo "Building demo programs..."
+	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c test_files/demo_task1.c -o $(BUILD)/demo1.o
+	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c test_files/demo_task2.c -o $(BUILD)/demo2.o
 	@echo "Building entry points..."
 	nasm -f elf user/src/crt0.s -o $(BUILD)/crt0.o
 	@echo "Creating libc.elf..."
 	$(LD) $(BUILD)/libc.o -Ttext 0x40000000 -m elf_i386 -static -o $(BUILD)/libc.elf
 	@echo "Creating test.elf..."
 	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/test.o -T user/linker_test.ld -m elf_i386 -static -o $(BUILD)/test.elf
+	@echo "Creating demo ELFs..."
+	$(LD) --defsym USER_BASE=0x51000000 $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/demo1.o -T user/lua.ld -m elf_i386 -static -o $(BUILD)/demo1.elf
+	$(LD) --defsym USER_BASE=0x52000000 $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/demo2.o -T user/lua.ld -m elf_i386 -static -o $(BUILD)/demo2.elf
+	@echo "Building Lua 5.5.0..."
+	$(MAKE) -C user/lua -j4
+	cp user/lua/lua $(BUILD)/lua.elf
 
 format:
 	@find . -type f \( -name "*.c" -o -name "*.h" \) -exec clang-format -i {} +

@@ -67,6 +67,8 @@ irq_common:
     call irq_dispatcher
     add esp, 4
 
+    mov esp, eax
+
     popa_c
     add esp, 8
     iret

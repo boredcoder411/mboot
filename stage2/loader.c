@@ -1,3 +1,4 @@
+#include "cpu/gdt.h"
 #include "cpu/interrupts/idt.h"
 #include "cpu/interrupts/irq.h"
 #include "cpu/interrupts/isr.h"
@@ -15,6 +16,8 @@
 #include "net/icmp.h"
 #include "net/ipv4.h"
 #include "net/udp.h"
+#include "paging.h"
+#include "scheduler.h"
 #include "utils.h"
 #include "vfs.h"
 #include <stdbool.h>
@@ -47,6 +50,7 @@ void loader_start(void) {
   e820_entry_t *mem_map = E820_TABLE_ADDR;
   uint16_t entry_count = *E820_ENTRY_COUNT_ADDR;
   init_alloc(entry_count, mem_map);
+  paging_init();
 
   pci_enumerate();
   uint8_t src_ip[4] = {10, 0, 2, 15};
@@ -57,7 +61,13 @@ void loader_start(void) {
   udp_init();
   INFO("MAIN", "Network ready: guest IPv4 %d.%d.%d.%d, UDP echo port %u",
        src_ip[0], src_ip[1], src_ip[2], src_ip[3], 7);
-  STI();
+  gdt_init();
+  scheduler_init();
+  pic_clear_mask(0);
+  install_irq(0, NULL);
+  uint32_t esp;
+  asm("mov %%esp, %0" : "=r"(esp));
+  tss_set_stack(esp, GDT_DATA_SEG);
   arp_send_request(src_ip, gateway_ip);
 
   int resolved = 0;
@@ -78,47 +88,19 @@ void loader_start(void) {
 
   fat16_init();
 
-  INFO("MAIN", "Loading test.elf...");
-  int file = open_file("/test.elf");
-  void *test_buf = NULL;
-  int test_size = 0;
+  char *argv[] = {"lua", "/init.lua", NULL};
+  int argc = 2;
 
-  if (file >= 0) {
-    test_size = fat16_get_size(file);
-    test_buf = kmalloc(test_size);
-    read_file(file, test_size, test_buf);
-    load_elf(test_buf);
-    close_file(file);
-    INFO("MAIN", "test.elf loaded successfully");
-  } else {
-    INFO("MAIN", "error: could not find test.elf");
+  INFO("MAIN", "Starting Lua init...");
+  if (spawn_elf("/lua.elf", argc, argv) < 0) {
     while (1) {
+      asm volatile("hlt");
     }
   }
 
-  Elf32_Ehdr *test_header = (Elf32_Ehdr *)test_buf;
-  entry_point_t test_entry = (entry_point_t)test_header->entry;
-
-  kfree(test_buf);
-
-  INFO("MAIN", "Jumping to test program at 0x%x", (uint32_t)test_entry);
-  test_entry();
-
-  INFO("MAIN", "if you see this message, the elf returned somehow.");
-
-#ifdef ALLOC_DBG
-  INFO("MAIN", "malloc called %d times, free called %d times", malloc_calls,
-       free_calls);
-#endif
-
+  STI();
+  INFO("MAIN", "Init scheduled. Entering idle loop.");
   while (1) {
-  }
-
-#ifdef ALLOC_DBG
-  INFO("MAIN", "malloc called %d times, free called %d times", malloc_calls,
-       free_calls);
-#endif
-
-  while (1) {
+    asm volatile("hlt");
   }
 }

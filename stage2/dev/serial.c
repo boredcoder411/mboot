@@ -31,10 +31,24 @@ static inline int is_transmit_empty(void) {
   return inb(SERIAL_PORT + 5) & 0x20;
 }
 
+static inline int is_data_ready(void) {
+  return inb(SERIAL_PORT + 5) & 1;
+}
+
 void write_serial(char a) {
   while (!is_transmit_empty())
     ;
   outb(SERIAL_PORT, a);
+}
+
+char read_serial(void) {
+  while (!is_data_ready())
+    ;
+  return inb(SERIAL_PORT);
+}
+
+int serial_has_data(void) {
+  return is_data_ready();
 }
 
 void serial_print(const char *str) {
