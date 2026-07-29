@@ -59,5 +59,6 @@ typedef struct {
 typedef void (*entry_point_t)(void);
 
 int load_elf(void *file_data);
+int spawn_elf(const char *path, int argc, char **argv);
 void jump_to_entry(void *elf_data);
 void run_elf_with_args(void *elf_data, int argc, char **argv);

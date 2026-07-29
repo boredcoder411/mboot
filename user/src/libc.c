@@ -5,6 +5,7 @@
 #define __NR_write 4
 #define __NR_open 5
 #define __NR_close 6
+#define __NR_exec 11
 
 void put_pixel(int x, int y, uint8_t color) {
   asm volatile("int $0x80" : : "a"(255), "b"(x), "c"(y), "d"(color));
@@ -934,8 +935,9 @@ void abort(void) {
 }
 
 int system(const char *command) {
-  (void)command;
-  return -1;
+  int ret;
+  asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_exec), "b"(command));
+  return ret < 0 ? -1 : 0;
 }
 
 char *getenv(const char *name) {

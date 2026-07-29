@@ -1,6 +1,8 @@
 #include "cpu/interrupts/idt.h"
 #include "dev/serial.h"
+#include "elf.h"
 #include "io.h"
+#include "scheduler.h"
 #include "vfs.h"
 
 extern void syscall_handler();
@@ -10,9 +12,10 @@ void syscall_dispatch(registers_t *r) {
   case 1: { // sys_exit
     uint32_t exit_code = r->ebx;
     INFO("SYSCALL", "exit(%d)", exit_code);
+    scheduler_exit_current(exit_code);
     break;
   }
-  case 3: { // sys_read
+  case 3: {            // sys_read
     if (r->ebx == 0) { // stdin — line-buffered serial with echo
       static char line_buf[256];
       static int line_fill = 0;
@@ -35,7 +38,8 @@ void syscall_dispatch(registers_t *r) {
       line_pos = 0;
       for (;;) {
         uint8_t c = read_serial();
-        if (c == '\r') c = '\n';
+        if (c == '\r')
+          c = '\n';
         if (c == '\b' || c == 0x7F) {
           if (line_fill > 0) {
             line_fill--;
@@ -112,6 +116,14 @@ void syscall_dispatch(registers_t *r) {
     } else {
       r->eax = 0;
     }
+    break;
+  }
+  case 11: { // sys_exec
+    const char *pathname = (const char *)r->ebx;
+    char *argv[] = {(char *)pathname, NULL};
+    int pid = spawn_elf(pathname, 1, argv);
+    INFO("SYSCALL", "exec(\"%s\") = %d", pathname, pid);
+    r->eax = pid;
     break;
   }
   default:

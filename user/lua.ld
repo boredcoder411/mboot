@@ -2,7 +2,7 @@ ENTRY(_start)
 
 SECTIONS
 {
-  . = 0x50000000;
+  . = DEFINED(USER_BASE) ? USER_BASE : 0x50000000;
 
   .text : {
     *(.text .text.*)

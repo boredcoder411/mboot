@@ -1,3 +1,4 @@
+#include "cpu/gdt.h"
 #include "cpu/interrupts/idt.h"
 #include "cpu/interrupts/irq.h"
 #include "cpu/interrupts/isr.h"
@@ -16,10 +17,9 @@
 #include "net/ipv4.h"
 #include "net/udp.h"
 #include "paging.h"
+#include "scheduler.h"
 #include "utils.h"
 #include "vfs.h"
-#include "cpu/gdt.h"
-#include "scheduler.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -32,37 +32,6 @@ extern void enable_fpu(void);
 int malloc_calls;
 int free_calls;
 #endif
-
-void demo_task1() {
-  while (1) {
-    INFO("TASK1", "Hello from task 1");
-    for (volatile int i = 0; i < 10000000; i++);
-  }
-}
-
-void demo_task2() {
-  while (1) {
-    INFO("TASK2", "Hello from task 2");
-    for (volatile int i = 0; i < 10000000; i++);
-  }
-}
-
-static void *load_file(const char *path, int *out_size) {
-  int file = open_file(path);
-  if (file < 0) {
-    INFO("MAIN", "error: could not find %s", path);
-    return NULL;
-  }
-
-  int size = fat16_get_size(file);
-  void *buf = kmalloc(size);
-  read_file(file, size, buf);
-  close_file(file);
-
-  INFO("MAIN", "%s loaded (%d bytes)", path, size);
-  if (out_size) *out_size = size;
-  return buf;
-}
 
 void loader_start(void) {
   for (int i = 0; i < IRQs; ++i) {
@@ -96,12 +65,9 @@ void loader_start(void) {
   scheduler_init();
   pic_clear_mask(0);
   install_irq(0, NULL);
-  create_task(demo_task1);
-  create_task(demo_task2);
   uint32_t esp;
   asm("mov %%esp, %0" : "=r"(esp));
   tss_set_stack(esp, GDT_DATA_SEG);
-  STI();
   arp_send_request(src_ip, gateway_ip);
 
   int resolved = 0;
@@ -122,19 +88,19 @@ void loader_start(void) {
 
   fat16_init();
 
-  void *lua_data = load_file("/lua.elf", NULL);
-  if (!lua_data) {
-    while (1) { asm volatile("hlt"); }
-  }
-
-  load_elf(lua_data);
-
-  char *argv[] = {"lua", "/test.lua", NULL};
+  char *argv[] = {"lua", "/init.lua", NULL};
   int argc = 2;
 
-  INFO("MAIN", "Starting Lua...");
-  run_elf_with_args(lua_data, argc, argv);
+  INFO("MAIN", "Starting Lua init...");
+  if (spawn_elf("/lua.elf", argc, argv) < 0) {
+    while (1) {
+      asm volatile("hlt");
+    }
+  }
 
-  INFO("MAIN", "Lua returned (unexpected). Halting.");
-  while (1) { asm volatile("hlt"); }
+  STI();
+  INFO("MAIN", "Init scheduled. Entering idle loop.");
+  while (1) {
+    asm volatile("hlt");
+  }
 }

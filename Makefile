@@ -94,7 +94,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
 
 image: file_transforms
-	@./image.sh test_files/hi.txt build/libc.elf build/test.elf build/lua.elf test_files/test.lua
+	@./image.sh test_files/hi.txt build/libc.elf build/test.elf build/lua.elf build/demo1.elf build/demo2.elf test_files/init.lua test_files/test.lua
 
 psf: tools/psf.c | $(BUILD)
 	gcc -o $(BUILD)/psf tools/psf.c -Iinc/ $$(pkg-config --cflags --libs libpng)
@@ -109,12 +109,18 @@ file_transforms: psf imf | $(BUILD)
 	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c user/src/libc.c -o $(BUILD)/libc.o
 	@echo "Building test program as separate object..."
 	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c test_files/test.c -o $(BUILD)/test.o
+	@echo "Building demo programs..."
+	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c test_files/demo_task1.c -o $(BUILD)/demo1.o
+	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c test_files/demo_task2.c -o $(BUILD)/demo2.o
 	@echo "Building entry points..."
 	nasm -f elf user/src/crt0.s -o $(BUILD)/crt0.o
 	@echo "Creating libc.elf..."
 	$(LD) $(BUILD)/libc.o -Ttext 0x40000000 -m elf_i386 -static -o $(BUILD)/libc.elf
 	@echo "Creating test.elf..."
 	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/test.o -T user/linker_test.ld -m elf_i386 -static -o $(BUILD)/test.elf
+	@echo "Creating demo ELFs..."
+	$(LD) --defsym USER_BASE=0x51000000 $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/demo1.o -T user/lua.ld -m elf_i386 -static -o $(BUILD)/demo1.elf
+	$(LD) --defsym USER_BASE=0x52000000 $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/demo2.o -T user/lua.ld -m elf_i386 -static -o $(BUILD)/demo2.elf
 	@echo "Building Lua 5.5.0..."
 	$(MAKE) -C user/lua -j4
 	cp user/lua/lua $(BUILD)/lua.elf
