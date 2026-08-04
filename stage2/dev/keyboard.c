@@ -1,7 +1,6 @@
 #include "dev/keyboard.h"
 #include "cpu/interrupts/irq.h"
 #include "cpu/pic/pic.h"
-#include "dev/serial.h"
 #include <stdbool.h>
 
 bool shifted = false;
@@ -76,7 +75,6 @@ void keyboard_handler(registers_t *r) {
       keyboard_buffer[keyboard_buffer_head] = ascii_char;
       keyboard_buffer_head = next_head;
     }
-    serial_printf("%c\n", ascii_char);
   }
 }
 

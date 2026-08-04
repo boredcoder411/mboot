@@ -88,8 +88,8 @@ void loader_start(void) {
 
   fat16_init();
 
-  char *argv[] = {"lua", "/init.lua", NULL};
-  int argc = 2;
+  char *argv[] = {"lua", NULL};
+  int argc = 1;
 
   INFO("MAIN", "Starting Lua init...");
   if (spawn_elf("/lua.elf", argc, argv) < 0) {

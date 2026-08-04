@@ -1,4 +1,5 @@
 #include "cpu/interrupts/idt.h"
+#include "dev/keyboard.h"
 #include "dev/serial.h"
 #include "elf.h"
 #include "io.h"
@@ -16,7 +17,7 @@ void syscall_dispatch(registers_t *r) {
     break;
   }
   case 3: {            // sys_read
-    if (r->ebx == 0) { // stdin — line-buffered serial with echo
+    if (r->ebx == 0) { // stdin — line-buffered keyboard with echo
       static char line_buf[256];
       static int line_fill = 0;
       static int line_pos = 0;
@@ -33,11 +34,11 @@ void syscall_dispatch(registers_t *r) {
         break;
       }
 
-      // Read a fresh line from serial with echo
+      // Read a fresh line from the keyboard with echo
       line_fill = 0;
       line_pos = 0;
       for (;;) {
-        uint8_t c = read_serial();
+        uint8_t c = keyboard_read_key();
         if (c == '\r')
           c = '\n';
         if (c == '\b' || c == 0x7F) {
