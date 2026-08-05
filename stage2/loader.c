@@ -8,7 +8,6 @@
 #include "dev/keyboard.h"
 #include "dev/pci.h"
 #include "dev/serial.h"
-#include "dev/vga.h"
 #include "elf.h"
 #include "fat16.h"
 #include "mem.h"
@@ -45,7 +44,6 @@ void loader_start(void) {
   enable_fpu();
   install_keyboard();
   init_serial();
-  remap_vga_dac();
 
   e820_entry_t *mem_map = E820_TABLE_ADDR;
   uint16_t entry_count = *E820_ENTRY_COUNT_ADDR;

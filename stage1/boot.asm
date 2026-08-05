@@ -8,7 +8,7 @@ mov bp, 0x7c00
 mov sp, bp
 
 mov ah, 0x00
-mov al, 0x13
+mov al, 0x03
 int 0x10
 
 call load_kernel

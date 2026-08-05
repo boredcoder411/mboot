@@ -19,7 +19,7 @@ $(BUILD):
 stage1: stage1/boot.asm | $(BUILD)
 	nasm -f bin stage1/boot.asm -o boot.bin
 
-stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c stage2/io.c stage2/dev/disk.c stage2/dev/serial.c stage2/fat16.c stage2/cpu/interrupts/idt.c stage2/cpu/interrupts/isr.asm stage2/cpu/interrupts/isr.c stage2/cpu/interrupts/irq.asm stage2/cpu/interrupts/irq.c stage2/cpu/pic/pic.c stage2/cpu/pit/pit.c stage2/dev/keyboard.c stage2/mem.c stage2/paging.c stage2/dev/rtc.c stage2/dev/pci.c stage2/dev/pci_devices.c stage2/dev/e1k.c stage2/net/eth.c stage2/net/arp.c stage2/net/ipv4.c stage2/net/icmp.c stage2/net/udp.c stage2/vfs.c stage2/elf.c stage2/cpu/gdt.c stage2/scheduler.c | $(BUILD)
+stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/io.c stage2/dev/disk.c stage2/dev/serial.c stage2/fat16.c stage2/cpu/interrupts/idt.c stage2/cpu/interrupts/isr.asm stage2/cpu/interrupts/isr.c stage2/cpu/interrupts/irq.asm stage2/cpu/interrupts/irq.c stage2/cpu/pic/pic.c stage2/cpu/pit/pit.c stage2/dev/keyboard.c stage2/mem.c stage2/paging.c stage2/dev/rtc.c stage2/dev/pci.c stage2/dev/pci_devices.c stage2/dev/e1k.c stage2/net/eth.c stage2/net/arp.c stage2/net/ipv4.c stage2/net/icmp.c stage2/net/udp.c stage2/vfs.c stage2/elf.c stage2/cpu/gdt.c stage2/scheduler.c | $(BUILD)
 	nasm -f elf stage2/start_loader.asm -o $(BUILD)/start_loader.o
 	nasm -f elf stage2/cpu/interrupts/idt.asm -o $(BUILD)/idt_s.o
 	nasm -f elf stage2/cpu/interrupts/isr.asm -o $(BUILD)/isr_s.o
@@ -28,7 +28,6 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 	
 	$(CC) $(CFLAGS) stage2/loader.c -o $(BUILD)/loader.o
 	$(CC) $(CFLAGS) stage2/utils.c -o $(BUILD)/utils.o
-	$(CC) $(CFLAGS) stage2/dev/vga.c -o $(BUILD)/vga.o
 	$(CC) $(CFLAGS) stage2/io.c -o $(BUILD)/io.o
 	$(CC) $(CFLAGS) stage2/dev/disk.c -o $(BUILD)/disk.o
 	$(CC) $(CFLAGS) stage2/dev/serial.c -o $(BUILD)/serial.o
@@ -59,7 +58,6 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 		$(BUILD)/start_loader.o \
 		$(BUILD)/loader.o \
 		$(BUILD)/utils.o \
-		$(BUILD)/vga.o \
 		$(BUILD)/serial.o \
 		$(BUILD)/io.o \
 		$(BUILD)/disk.o \
@@ -96,15 +94,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/dev/vga.c 
 image: file_transforms
 	@./image.sh test_files/hi.txt build/libc.elf build/test.elf build/lua.elf build/demo1.elf build/demo2.elf test_files/init.lua test_files/test.lua
 
-psf: tools/psf.c | $(BUILD)
-	gcc -o $(BUILD)/psf tools/psf.c -Iinc/ $$(pkg-config --cflags --libs libpng)
-
-imf: tools/imf.c | $(BUILD)
-	gcc -o $(BUILD)/imf tools/imf.c -Iinc/ $$(pkg-config --cflags --libs libpng)
-
-file_transforms: psf imf | $(BUILD)
-	$(BUILD)/psf test_files/font.png $(BUILD)/font.psf
-	$(BUILD)/imf test_files/icon.png $(BUILD)/icon.imf --rle
+file_transforms: | $(BUILD)
 	@echo "Building libc as separate object..."
 	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c user/src/libc.c -o $(BUILD)/libc.o
 	@echo "Building test program as separate object..."
@@ -135,4 +125,4 @@ clean:
 	rm -f kernel.elf
 	rm -f image.img
 
-.PHONY: all clean stage1 stage2 image psf imf file_transforms format
+.PHONY: all clean stage1 stage2 image file_transforms format

@@ -7,12 +7,6 @@
 #define __NR_close 6
 #define __NR_exec 11
 
-void put_pixel(int x, int y, uint8_t color) {
-  asm volatile("int $0x80" : : "a"(255), "b"(x), "c"(y), "d"(color));
-}
-
-void clear_screen(void) { asm volatile("int $0x80" : : "a"(254)); }
-
 uint8_t read_key(void) {
   uint8_t key;
   asm volatile("int $0x80" : "=a"(key) : "a"(253));
@@ -115,88 +109,6 @@ int rand(void) {
 }
 
 void srand(uint32_t s) { seed = s; }
-
-void draw_square(int x, int y, int size, uint8_t color) {
-  for (int py = y; py < y + size; py++) {
-    for (int px = x; px < x + size; px++) {
-      if (px >= 0 && px < SCREEN_WIDTH && py >= 0 && py < SCREEN_HEIGHT) {
-        put_pixel(px, py, color);
-      }
-    }
-  }
-}
-
-void draw_rect(int x, int y, int width, int height, uint8_t color) {
-  for (int py = y; py < y + height; py++) {
-    for (int px = x; px < x + width; px++) {
-      if (px >= 0 && px < SCREEN_WIDTH && py >= 0 && py < SCREEN_HEIGHT) {
-        put_pixel(px, py, color);
-      }
-    }
-  }
-}
-
-void draw_line(int x0, int y0, int x1, int y1, uint8_t color) {
-  int dx = abs(x1 - x0);
-  int dy = abs(y1 - y0);
-  int sx = (x0 < x1) ? 1 : -1;
-  int sy = (y0 < y1) ? 1 : -1;
-  int err = dx - dy;
-
-  while (1) {
-    if (x0 >= 0 && x0 < SCREEN_WIDTH && y0 >= 0 && y0 < SCREEN_HEIGHT) {
-      put_pixel(x0, y0, color);
-    }
-    if (x0 == x1 && y0 == y1)
-      break;
-    int err2 = err * 2;
-    if (err2 > -dy) {
-      err -= dy;
-      x0 += sx;
-    }
-    if (err2 < dx) {
-      err += dx;
-      y0 += sy;
-    }
-  }
-}
-
-void draw_circle(int cx, int cy, int radius, uint8_t color) {
-  int x = 0;
-  int y = radius;
-  int d = 3 - 2 * radius;
-
-  while (x <= y) {
-    if (x >= 0 && x < SCREEN_WIDTH && (cy - y) >= 0 && (cy - y) < SCREEN_HEIGHT)
-      put_pixel(cx + x, cy - y, color);
-    if (x >= 0 && x < SCREEN_WIDTH && (cy + y) >= 0 && (cy + y) < SCREEN_HEIGHT)
-      put_pixel(cx + x, cy + y, color);
-    if (y >= 0 && y < SCREEN_WIDTH && (cy - x) >= 0 && (cy - x) < SCREEN_HEIGHT)
-      put_pixel(cx + y, cy - x, color);
-    if (y >= 0 && y < SCREEN_WIDTH && (cy + x) >= 0 && (cy + x) < SCREEN_HEIGHT)
-      put_pixel(cx + y, cy + x, color);
-    if ((-x) >= 0 && (-x) < SCREEN_WIDTH && (cy - y) >= 0 &&
-        (cy - y) < SCREEN_HEIGHT)
-      put_pixel(cx - x, cy - y, color);
-    if ((-x) >= 0 && (-x) < SCREEN_WIDTH && (cy + y) >= 0 &&
-        (cy + y) < SCREEN_HEIGHT)
-      put_pixel(cx - x, cy + y, color);
-    if ((-y) >= 0 && (-y) < SCREEN_WIDTH && (cy - x) >= 0 &&
-        (cy - x) < SCREEN_HEIGHT)
-      put_pixel(cx - y, cy - x, color);
-    if ((-y) >= 0 && (-y) < SCREEN_WIDTH && (cy + x) >= 0 &&
-        (cy + x) < SCREEN_HEIGHT)
-      put_pixel(cx - y, cy + x, color);
-
-    if (d < 0) {
-      d = d + 4 * x + 6;
-    } else {
-      d = d + 4 * (x - y) + 10;
-      y--;
-    }
-    x++;
-  }
-}
 
 static uint8_t heap[65536];
 static uint32_t heap_used = 0;
