@@ -16,6 +16,13 @@ typedef int (*udp_handler_t)(const uint8_t src_ip[4], uint16_t src_port,
 
 void udp_init(void);
 int udp_bind(uint16_t port, udp_handler_t handler);
+int udp_server_bind(uint16_t port);
+int udp_server_recv(uint16_t port, uint8_t src_ip_out[4],
+                    uint16_t *src_port_out, uint8_t *payload_out,
+                    uint16_t max_len, uint16_t *payload_len_out);
+int udp_send_local(uint16_t src_port, const uint8_t dst_ip[4],
+                   uint16_t dst_port, const uint8_t *payload,
+                   uint16_t payload_len);
 int udp_send(const uint8_t src_ip[4], const uint8_t dst_ip[4],
              const uint8_t next_hop_mac[6], uint16_t src_port,
              uint16_t dst_port, const void *payload, uint16_t payload_len);

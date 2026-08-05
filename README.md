@@ -27,7 +27,7 @@ qemu-system-x86_64 -m 4G -drive file=image.img -serial stdio \
 ```
 
 ## UDP demo
-The kernel now starts a UDP echo service on guest IP `10.0.2.15`, port `7`.
+The init system (`user/src/init.c`) starts a UDP echo service on guest IP `10.0.2.15`, port `7`.
 
 Run QEMU with host UDP forwarding:
 ```sh
@@ -48,10 +48,9 @@ nc -u -l 10007
 ```
 
 On the guest serial log you should see:
-- the local IPv4 address announcement
-- `UDP echo service listening on port 7`
+- `init:` messages for the ARP resolution, ping, and UDP server bring-up
 - an `RX a.b.c.d:src -> 10.0.2.15:7` log line
-- an `Echoing N bytes back to port src` log line
+- an `init: UDP echo from ...` log line
 
 ## todo:
 - [x] 32 bit protected mode

@@ -3,6 +3,10 @@
 #include "dev/serial.h"
 #include "elf.h"
 #include "io.h"
+#include "net/arp.h"
+#include "net/icmp.h"
+#include "net/ipv4.h"
+#include "net/udp.h"
 #include "scheduler.h"
 #include "vfs.h"
 
@@ -125,6 +129,63 @@ void syscall_dispatch(registers_t *r) {
     int pid = spawn_elf(pathname, 1, argv);
     INFO("SYSCALL", "exec(\"%s\") = %d", pathname, pid);
     r->eax = pid;
+    break;
+  }
+  case 200: { // sys_net_init
+    const uint8_t *src_ip = (const uint8_t *)r->ebx;
+    ipv4_set_address(src_ip);
+    udp_init();
+    INFO("SYSCALL", "net_init(%d.%d.%d.%d)", src_ip[0], src_ip[1], src_ip[2],
+         src_ip[3]);
+    r->eax = 0;
+    break;
+  }
+  case 201: { // sys_arp_request
+    const uint8_t *src_ip = (const uint8_t *)r->ebx;
+    const uint8_t *target_ip = (const uint8_t *)r->ecx;
+    arp_send_request((uint8_t *)src_ip, (uint8_t *)target_ip);
+    r->eax = 0;
+    break;
+  }
+  case 202: { // sys_arp_lookup
+    const uint8_t *ip = (const uint8_t *)r->ebx;
+    uint8_t *mac_out = (uint8_t *)r->ecx;
+    r->eax = arp_try_get_mac((uint8_t *)ip, mac_out) ? 0 : -1;
+    break;
+  }
+  case 203: { // sys_icmp_echo
+    const uint8_t *src_ip = (const uint8_t *)r->ebx;
+    const uint8_t *dst_ip = (const uint8_t *)r->ecx;
+    const uint8_t *next_hop_mac = (const uint8_t *)r->edx;
+    uint16_t identifier = (uint16_t)r->esi;
+    uint16_t sequence = (uint16_t)r->edi;
+    r->eax = icmp_send_echo((uint8_t *)src_ip, (uint8_t *)dst_ip,
+                            (uint8_t *)next_hop_mac, identifier, sequence);
+    break;
+  }
+  case 204: { // sys_udp_server_bind
+    r->eax = udp_server_bind((uint16_t)r->ebx);
+    break;
+  }
+  case 205: { // sys_udp_server_recv
+    uint16_t port = (uint16_t)r->ebx;
+    uint8_t *src_ip_out = (uint8_t *)r->ecx;
+    uint16_t *src_port_out = (uint16_t *)r->edx;
+    uint8_t *buf = (uint8_t *)r->esi;
+    uint16_t max_len = (uint16_t)r->edi;
+    uint16_t payload_len = 0;
+    int ret =
+        udp_server_recv(port, src_ip_out, src_port_out, buf, max_len, &payload_len);
+    r->eax = ret < 0 ? -1 : (int)payload_len;
+    break;
+  }
+  case 206: { // sys_udp_send_local
+    uint16_t src_port = (uint16_t)r->ebx;
+    const uint8_t *dst_ip = (const uint8_t *)r->ecx;
+    uint16_t dst_port = (uint16_t)r->edx;
+    const uint8_t *payload = (const uint8_t *)r->esi;
+    uint16_t payload_len = (uint16_t)r->edi;
+    r->eax = udp_send_local(src_port, dst_ip, dst_port, payload, payload_len);
     break;
   }
   default:

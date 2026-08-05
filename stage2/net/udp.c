@@ -2,17 +2,35 @@
 #include "dev/serial.h"
 #include "mem.h"
 #include "net/arp.h"
+#include "net/ipv4.h"
 #include "utils.h"
 
 #define UDP_MAX_BINDINGS 8
-#define UDP_ECHO_PORT 7
+#define UDP_MAX_SERVERS 4
+#define UDP_MAX_QUEUE 16
+#define UDP_MAX_DGRAM 1472
 
 typedef struct {
   uint16_t port;
   udp_handler_t handler;
 } udp_binding_t;
 
+typedef struct {
+  uint16_t len;
+  uint8_t src_ip[4];
+  uint16_t src_port;
+  uint8_t payload[UDP_MAX_DGRAM];
+} udp_dgram_t;
+
+typedef struct {
+  uint16_t port;
+  udp_dgram_t queue[UDP_MAX_QUEUE];
+  uint8_t head;
+  uint8_t count;
+} udp_user_server_t;
+
 static udp_binding_t udp_bindings[UDP_MAX_BINDINGS];
+static udp_user_server_t *udp_servers[UDP_MAX_SERVERS];
 static uint16_t udp_tx_identification = 1;
 
 static uint16_t udp_checksum(const uint8_t src_ip[4], const uint8_t dst_ip[4],
@@ -59,18 +77,93 @@ static udp_handler_t udp_find_handler(uint16_t port) {
   return NULL;
 }
 
-static int udp_echo_handler(const uint8_t src_ip[4], uint16_t src_port,
-                            const uint8_t dst_ip[4], uint16_t dst_port,
-                            const uint8_t *payload, uint16_t payload_len) {
-  INFO("UDP", "Echoing %u bytes back to port %u", payload_len, src_port);
-  return udp_send(dst_ip, src_ip, NULL, dst_port, src_port, payload,
+static udp_user_server_t *udp_find_server(uint16_t port) {
+  for (int i = 0; i < UDP_MAX_SERVERS; ++i) {
+    if (udp_servers[i] != NULL && udp_servers[i]->port == port) {
+      return udp_servers[i];
+    }
+  }
+
+  return NULL;
+}
+
+int udp_server_bind(uint16_t port) {
+  if (udp_find_server(port) != NULL)
+    return 0;
+
+  for (int i = 0; i < UDP_MAX_SERVERS; ++i) {
+    if (udp_servers[i] == NULL) {
+      udp_user_server_t *server =
+          (udp_user_server_t *)kmalloc(sizeof(udp_user_server_t));
+      memset(server, 0, sizeof(udp_user_server_t));
+      server->port = port;
+      udp_servers[i] = server;
+      INFO("UDP", "Userspace server bound to port %u", port);
+      return 0;
+    }
+  }
+
+  INFO("UDP", "No free userspace server slots for port %u", port);
+  return -1;
+}
+
+static void udp_server_enqueue(udp_user_server_t *server,
+                               const uint8_t src_ip[4], uint16_t src_port,
+                               const uint8_t *payload, uint16_t payload_len) {
+  if (server->count >= UDP_MAX_QUEUE) {
+    INFO("UDP", "Dropping datagram, userspace queue full on port %u",
+         server->port);
+    return;
+  }
+
+  uint8_t slot = (server->head + server->count) % UDP_MAX_QUEUE;
+  udp_dgram_t *dgram = &server->queue[slot];
+  dgram->len = payload_len;
+  memcpy(dgram->src_ip, src_ip, 4);
+  dgram->src_port = src_port;
+  memcpy(dgram->payload, payload, payload_len);
+  server->count++;
+
+  INFO("UDP", "Queued %u bytes from port %u for userspace server on port %u",
+       payload_len, src_port, server->port);
+}
+
+int udp_server_recv(uint16_t port, uint8_t src_ip_out[4],
+                    uint16_t *src_port_out, uint8_t *payload_out,
+                    uint16_t max_len, uint16_t *payload_len_out) {
+  udp_user_server_t *server = udp_find_server(port);
+  if (server == NULL || server->count == 0)
+    return -1;
+
+  udp_dgram_t *dgram = &server->queue[server->head];
+  uint16_t take = dgram->len;
+  if (take > max_len)
+    take = max_len;
+
+  memcpy(src_ip_out, dgram->src_ip, 4);
+  *src_port_out = dgram->src_port;
+  memcpy(payload_out, dgram->payload, take);
+  *payload_len_out = take;
+
+  server->head = (server->head + 1) % UDP_MAX_QUEUE;
+  server->count--;
+  return 0;
+}
+
+int udp_send_local(uint16_t src_port, const uint8_t dst_ip[4],
+                   uint16_t dst_port, const uint8_t *payload,
+                   uint16_t payload_len) {
+  uint8_t src_ip[4];
+  if (ipv4_get_address(src_ip) < 0)
+    return -1;
+  return udp_send(src_ip, dst_ip, NULL, src_port, dst_port, payload,
                   payload_len);
 }
 
 void udp_init(void) {
   memset(udp_bindings, 0, sizeof(udp_bindings));
-  udp_bind(UDP_ECHO_PORT, udp_echo_handler);
-  INFO("UDP", "UDP echo service listening on port %u", UDP_ECHO_PORT);
+  memset(udp_servers, 0, sizeof(udp_servers));
+  INFO("UDP", "UDP stack initialized");
 }
 
 int udp_bind(uint16_t port, udp_handler_t handler) {
@@ -178,6 +271,12 @@ void udp_process_packet(uint8_t *frame, uint16_t frame_len, ipv4_hdr *ipv4,
        ipv4->src_ip[0], ipv4->src_ip[1], ipv4->src_ip[2], ipv4->src_ip[3],
        src_port, ipv4->dst_ip[0], ipv4->dst_ip[1], ipv4->dst_ip[2],
        ipv4->dst_ip[3], dst_port, payload_len);
+
+  udp_user_server_t *server = udp_find_server(dst_port);
+  if (server != NULL) {
+    udp_server_enqueue(server, ipv4->src_ip, src_port, payload, payload_len);
+    return;
+  }
 
   udp_handler_t handler = udp_find_handler(dst_port);
   if (handler == NULL) {
