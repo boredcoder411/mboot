@@ -26,6 +26,12 @@ void vga_write(char c) {
         case '\r':
             cur_x = 0;
             break;
+        case '\b':
+            if (cur_x > 0) {
+                cur_x--;
+                vga_buffer[pos] = (uint16_t)' ' | (0x0F << 8);
+            }
+            break;
         default:
             vga_buffer[pos] = (uint16_t)c | (0x0F << 8); // white on black
             cur_x++;
