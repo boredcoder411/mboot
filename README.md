@@ -57,19 +57,25 @@ On the guest serial log you should see:
 - [x] cpu exceptions
 - [x] individual hardware interrupts
 - [x] a ps/2 keyboard
-- [x] vga in 320x200x8bpp
+- [x] vga driver
 - [x] reading ata drives
-- [x] rs232 interfaces
+- [x] rs232 interface
 - [x] the intel 8259 PIC
 - [x] the intel 8253 PIT
 - [x] the mbr partitioning scheme
-- [x] wad files as the filesystem
+- [x] fat 16 as the filesystem
 - [x] enable x87 fpu
 - [x] memory allocator
 - [x] elf loader
 - [x] paging
 - [ ] libc
-- [ ] implement more demos to show syscalls working
+- [x] implement more demos to show syscalls working
+
+# Features
 
 ## Screenshots
-![mboot running in qemu](screenshots/mboot_sc.png)
+Oct 20, 2025:
+![mboot running in qemu](screenshots/mboot_cube_time.png)
+
+Aug 6, 2026:
+![mboot running in qemu](screenshots/mboot_init.png)
