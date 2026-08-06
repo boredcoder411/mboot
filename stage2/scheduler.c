@@ -2,6 +2,7 @@
 #include "cpu/gdt.h"
 #include "dev/serial.h"
 #include "mem.h"
+#include "paging.h"
 #include "utils.h"
 
 #define MAX_TASK_ARGS 16
@@ -23,6 +24,7 @@ void scheduler_init(void) {
   current_task->state = TASK_RUNNING;
   current_task->pid = next_pid++;
   current_task->stack_base = 0;
+  current_task->cr3 = paging_get_kernel_directory();
   current_task->next = current_task;
   idle_task = current_task;
 
@@ -53,17 +55,18 @@ int create_task(void (*func)(void)) {
   tcb->state = TASK_READY;
   tcb->pid = next_pid++;
   tcb->stack_base = (uint32_t)stack;
+  tcb->cr3 = paging_get_kernel_directory();
 
   tcb->next = idle_task->next;
   idle_task->next = tcb;
 
   INFO("SCHED", "Created task PID %u @ 0x%X (stack 0x%X, func 0x%X)", tcb->pid,
        (uint32_t)tcb, tcb->stack_base, (uint32_t)func);
-
   return tcb->pid;
 }
 
-int create_user_task(uint32_t entry, int argc, char **argv) {
+int create_user_task(uint32_t entry, uint32_t code_base, uint32_t code_size,
+                     int argc, char **argv) {
   if (argc < 0)
     return -1;
   if (argc > MAX_TASK_ARGS)
@@ -71,6 +74,16 @@ int create_user_task(uint32_t entry, int argc, char **argv) {
 
   tcb_t *tcb = (tcb_t *)kmalloc(sizeof(tcb_t));
   uint8_t *stack = (uint8_t *)kmalloc(TASK_STACK_SIZE);
+  uint32_t dir = paging_create_directory();
+
+  for (uint32_t off = 0; off < code_size; off += PAGE_SIZE) {
+    paging_map_page(dir, code_base + off, code_base + off,
+                    PAGE_USER | PAGE_WRITABLE);
+  }
+  for (uint32_t addr = (uint32_t)stack; addr < (uint32_t)stack + TASK_STACK_SIZE;
+       addr += PAGE_SIZE) {
+    paging_map_page(dir, addr, addr, PAGE_USER | PAGE_WRITABLE);
+  }
 
   uint32_t *sp = (uint32_t *)(stack + TASK_STACK_SIZE);
 
@@ -98,12 +111,15 @@ int create_user_task(uint32_t entry, int argc, char **argv) {
   tcb->state = TASK_READY;
   tcb->pid = next_pid++;
   tcb->stack_base = (uint32_t)stack;
+  tcb->cr3 = dir;
 
   tcb->next = idle_task->next;
   idle_task->next = tcb;
 
-  INFO("SCHED", "Created user task PID %u @ 0x%X (stack 0x%X, entry 0x%X)",
-       tcb->pid, (uint32_t)tcb, tcb->stack_base, entry);
+  INFO("SCHED", "Created user task PID %u @ 0x%X (stack 0x%X, entry 0x%X, "
+                "CR3 0x%X, code 0x%X+0x%X)",
+       tcb->pid, (uint32_t)tcb, tcb->stack_base, entry, tcb->cr3, code_base,
+       code_size);
 
   return tcb->pid;
 }
@@ -128,6 +144,10 @@ uint32_t scheduler_tick(registers_t *r) {
     current_task->state = TASK_RUNNING;
   } else {
     current_task->state = TASK_RUNNING;
+  }
+
+  if (current_task->cr3 != paging_get_directory()) {
+    paging_switch(current_task->cr3);
   }
 
   return current_task->esp;

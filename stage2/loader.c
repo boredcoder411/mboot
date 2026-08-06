@@ -13,7 +13,6 @@
 #include "paging.h"
 #include "scheduler.h"
 #include "utils.h"
-#include "vfs.h"
 #include <stdbool.h>
 #include <stdint.h>
 

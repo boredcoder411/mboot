@@ -48,7 +48,21 @@ int spawn_elf(const char *path, int argc, char **argv) {
   }
 
   Elf32_Ehdr *eh = (Elf32_Ehdr *)buf;
-  return create_user_task(eh->entry, argc, argv);
+  uint32_t code_base = 0xFFFFFFFF;
+  uint32_t code_end = 0;
+  Elf32_Phdr *ph = (Elf32_Phdr *)((uint8_t *)buf + eh->phoff);
+  for (int i = 0; i < eh->phnum; i++, ph++) {
+    if (ph->type != PT_LOAD)
+      continue;
+    if (ph->vaddr < code_base)
+      code_base = ph->vaddr;
+    uint32_t seg_end = ph->vaddr + ph->memsz;
+    if (seg_end > code_end)
+      code_end = seg_end;
+  }
+
+  return create_user_task(eh->entry, code_base, code_end - code_base, argc,
+                          argv);
 }
 
 void jump_to_entry(void *elf_data) {
