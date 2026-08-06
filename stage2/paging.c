@@ -93,4 +93,29 @@ void paging_map_page(uint32_t pd, uint32_t vaddr, uint32_t paddr,
   table[table_idx] = (paddr & 0xFFFFF000U) | flags | PAGE_PRESENT;
 }
 
+uint32_t paging_clone_directory(uint32_t parent_pd) {
+  uint32_t new_dir = paging_create_directory();
+  uint32_t *parent = (uint32_t *)parent_pd;
+
+  for (uint32_t dir_idx = 0; dir_idx < PAGE_DIRECTORY_ENTRIES; ++dir_idx) {
+    uint32_t entry = parent[dir_idx];
+    if (!(entry & PAGE_PRESENT) || (entry & PAGE_SIZE_4MB))
+      continue;
+
+    uint32_t *table = (uint32_t *)(entry & 0xFFFFF000U);
+    for (uint32_t table_idx = 0; table_idx < 1024; ++table_idx) {
+      uint32_t pte = table[table_idx];
+      if (!(pte & PAGE_PRESENT) || !(pte & PAGE_USER))
+        continue;
+
+      uint32_t vaddr = (dir_idx << 22) | (table_idx << 12);
+      uint32_t new_page = alloc_aligned_page();
+      memcpy((void *)new_page, (void *)(pte & 0xFFFFF000U), PAGE_SIZE);
+      paging_map_page(new_dir, vaddr, new_page, pte & 0xFFF);
+    }
+  }
+
+  return new_dir;
+}
+
 void paging_switch(uint32_t pd) { write_cr3(pd); }

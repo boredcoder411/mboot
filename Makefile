@@ -94,13 +94,15 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/io.c stage
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
 
 image: file_transforms
-	@./image.sh test_files/hi.txt build/libc.elf build/test.elf build/lua.elf build/init.elf build/demo1.elf build/demo2.elf test_files/all.lua test_files/test.lua
+	@./image.sh test_files/hi.txt build/libc.elf build/test.elf build/lua.elf build/init.elf build/demo1.elf build/demo2.elf build/fork_test.elf test_files/all.lua test_files/test.lua
 
 file_transforms: | $(BUILD)
 	@echo "Building libc as separate object..."
 	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c user/src/libc.c -o $(BUILD)/libc.o
 	@echo "Building test program as separate object..."
 	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c test_files/test.c -o $(BUILD)/test.o
+	@echo "Building fork test program..."
+	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c test_files/fork_test.c -o $(BUILD)/fork_test.o
 	@echo "Building demo programs..."
 	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c test_files/demo_task1.c -o $(BUILD)/demo1.o
 	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c test_files/demo_task2.c -o $(BUILD)/demo2.o
@@ -112,6 +114,8 @@ file_transforms: | $(BUILD)
 	$(LD) $(BUILD)/libc.o -Ttext 0x40000000 -m elf_i386 -static -o $(BUILD)/libc.elf
 	@echo "Creating test.elf..."
 	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/test.o -m elf_i386 -Ttext 0x50000000 -e _start -static -o $(BUILD)/test.elf
+	@echo "Creating fork_test.elf..."
+	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/fork_test.o -m elf_i386 -Ttext 0x53000000 -e _start -static -o $(BUILD)/fork_test.elf
 	@echo "Creating demo ELFs..."
 	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/demo1.o -m elf_i386 -Ttext 0x51000000 -e _start -static -o $(BUILD)/demo1.elf
 	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/demo2.o -m elf_i386 -Ttext 0x52000000 -e _start -static -o $(BUILD)/demo2.elf

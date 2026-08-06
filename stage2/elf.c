@@ -54,6 +54,8 @@ int spawn_elf(const char *path, int argc, char **argv) {
   for (int i = 0; i < eh->phnum; i++, ph++) {
     if (ph->type != PT_LOAD)
       continue;
+    if (ph->vaddr < 0x1000000U)
+      continue; // skip ld.lld ELF-header segment artifact at 0x400000
     if (ph->vaddr < code_base)
       code_base = ph->vaddr;
     uint32_t seg_end = ph->vaddr + ph->memsz;

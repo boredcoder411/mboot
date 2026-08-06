@@ -80,7 +80,8 @@ int create_user_task(uint32_t entry, uint32_t code_base, uint32_t code_size,
     paging_map_page(dir, code_base + off, code_base + off,
                     PAGE_USER | PAGE_WRITABLE);
   }
-  for (uint32_t addr = (uint32_t)stack; addr < (uint32_t)stack + TASK_STACK_SIZE;
+  for (uint32_t addr = (uint32_t)stack & 0xFFFFF000U;
+       addr < (uint32_t)stack + TASK_STACK_SIZE;
        addr += PAGE_SIZE) {
     paging_map_page(dir, addr, addr, PAGE_USER | PAGE_WRITABLE);
   }
@@ -151,6 +152,46 @@ uint32_t scheduler_tick(registers_t *r) {
   }
 
   return current_task->esp;
+}
+
+int fork_current(registers_t *r) {
+  if (!current_task || current_task == idle_task)
+    return -1;
+
+  uint32_t dir = paging_clone_directory(current_task->cr3);
+
+  tcb_t *child = (tcb_t *)kmalloc(sizeof(tcb_t));
+
+  // All tasks run at ring 0, so int $0x80 does not push ss/esp and the
+  // registers_t esp/ss fields are garbage. The child must resume with the
+  // parent's user esp: place its iret frame in the child's own copy of the
+  // user stack page, 48 bytes below the parent's esp at syscall entry.
+  uint32_t user_esp = (uint32_t)&r->eip + 12;
+  uint32_t frame_vaddr = user_esp - 48;
+
+  uint32_t *cdir = (uint32_t *)dir;
+  uint32_t pde = cdir[frame_vaddr >> 22];
+  uint32_t *ctab = (uint32_t *)(pde & 0xFFFFF000U);
+  uint32_t frame_paddr = ctab[(frame_vaddr >> 12) & 0x3FF] & 0xFFFFF000U;
+  registers_t *child_frame =
+      (registers_t *)(frame_paddr + (frame_vaddr & 0xFFFU));
+
+  memcpy(child_frame, r, 48);
+  child_frame->eax = 0;
+
+  child->esp = (uint32_t)child_frame;
+  child->state = TASK_READY;
+  child->pid = next_pid++;
+  child->stack_base = 0;
+  child->cr3 = dir;
+
+  child->next = idle_task->next;
+  idle_task->next = child;
+
+  INFO("SCHED", "fork: PID %u -> child PID %u (CR3 0x%X)", current_task->pid,
+       child->pid, dir);
+
+  return child->pid;
 }
 
 void scheduler_exit_current(int exit_code) {

@@ -1,6 +1,7 @@
 #include "libc.h"
 
 #define __NR_exit 1
+#define __NR_fork 2
 #define __NR_read 3
 #define __NR_write 4
 #define __NR_open 5

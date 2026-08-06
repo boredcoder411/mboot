@@ -67,7 +67,7 @@ int main(int argc, char **argv) {
     printf("init: failed to bind UDP port 7\n");
   }
 
-  printf("init: launching lua\n");
+  printf("init: launching Lua interpreter\n");
   system("/lua.elf");
 
   uint8_t buf[1472];

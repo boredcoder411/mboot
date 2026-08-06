@@ -21,6 +21,12 @@ void syscall_dispatch(registers_t *r) {
     scheduler_exit_current(exit_code);
     break;
   }
+  case 2: { // sys_fork
+    int pid = fork_current(r);
+    r->eax = (pid >= 0) ? (uint32_t)pid : 0xFFFFFFFFU;
+    INFO("SYSCALL", "fork() = %d", pid);
+    break;
+  }
   case 3: {            // sys_read
     if (r->ebx == 0) { // stdin — line-buffered keyboard with echo
       static char line_buf[256];
