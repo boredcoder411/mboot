@@ -30,7 +30,7 @@ int load_elf(void *file_data) {
 }
 
 int spawn_elf(const char *path, int argc, char **argv) {
-  int file = open_file(path);
+  int file = file_open(path);
   if (file < 0) {
     INFO("ELF", "error: could not find %s", path);
     return -1;
@@ -38,8 +38,8 @@ int spawn_elf(const char *path, int argc, char **argv) {
 
   int size = fat16_get_size(file);
   void *buf = kmalloc(size);
-  read_file(file, size, buf);
-  close_file(file);
+  file_read(file, size, buf);
+  file_close(file);
 
   INFO("ELF", "%s loaded (%d bytes)", path, size);
   if (load_elf(buf) != 0) {

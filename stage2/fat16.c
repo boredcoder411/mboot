@@ -264,6 +264,7 @@ static int fat16_open(const char *path) {
       open_files[i].start_cluster = dir.FstClusLO;
       open_files[i].size = dir.FileSize;
       open_files[i].offset = 0;
+      open_files[i].refs = 1;
       INFO("FAT16", "opened '%s' (cluster=%u size=%u)", fname, dir.FstClusLO,
            dir.FileSize);
       return i;
@@ -274,9 +275,22 @@ static int fat16_open(const char *path) {
   return -1;
 }
 
+static int fat16_dup(int fd) {
+  if (fd < 0 || fd >= MAX_OPEN_FILES || !open_files[fd].used)
+    return -1;
+  open_files[fd].refs++;
+  INFO("FAT16", "dup '%s' (refs=%u)", open_files[fd].path, open_files[fd].refs);
+  return fd;
+}
+
 static int fat16_close(int fd) {
   if (fd < 0 || fd >= MAX_OPEN_FILES || !open_files[fd].used)
     return -1;
+  if (--open_files[fd].refs > 0) {
+    INFO("FAT16", "dropped ref to '%s' (refs=%u)", open_files[fd].path,
+         open_files[fd].refs);
+    return 0;
+  }
   open_files[fd].used = false;
   INFO("FAT16", "closed '%s'", open_files[fd].path);
   return 0;
@@ -387,6 +401,7 @@ void fat16_init() {
   fat16_driver.open_file = fat16_open;
   fat16_driver.close_file = fat16_close;
   fat16_driver.read_file = fat16_read;
+  fat16_driver.dup_file = fat16_dup;
   register_vfs_driver(&fat16_driver);
 
   INFO("FAT16", "registered FAT16 driver with VFS");

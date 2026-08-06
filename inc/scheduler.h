@@ -1,5 +1,6 @@
 #pragma once
 
+#include "fd.h"
 #include "io.h"
 #include <stdint.h>
 
@@ -18,6 +19,7 @@ typedef struct task_control_block {
   uint32_t pid;
   uint32_t stack_base;
   uint32_t cr3;
+  fd_table_t fds;
   struct task_control_block *next;
 } tcb_t;
 
@@ -29,3 +31,4 @@ void scheduler_init();
 void scheduler_exit_current(int exit_code);
 void task_exit() __attribute__((noreturn));
 uint32_t scheduler_tick(registers_t *r);
+fd_table_t *scheduler_current_fds(void);

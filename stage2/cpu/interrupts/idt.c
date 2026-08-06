@@ -86,9 +86,9 @@ void syscall_dispatch(registers_t *r) {
         r->eax = 0;
       }
     } else if (r->ebx > 2) {
-      uint32_t fd = r->ebx - 3;
+      uint32_t fd = r->ebx;
       INFO("SYSCALL", "read(fd=%u, count=%u)", fd, r->edx);
-      r->eax = read_file(fd, r->edx, (void *)r->ecx);
+      r->eax = vfs_read(fd, r->edx, (void *)r->ecx);
       INFO("SYSCALL", "read -> %d", r->eax);
     } else {
       r->eax = -1;
@@ -112,17 +112,17 @@ void syscall_dispatch(registers_t *r) {
   }
   case 5: { // sys_open
     const char *pathname = (const char *)r->ebx;
-    int fd = open_file(pathname);
+    int fd = vfs_open(pathname);
     if (fd >= 0) {
-      INFO("SYSCALL", "open(\"%s\") = %d", pathname, fd + 3);
+      INFO("SYSCALL", "open(\"%s\") = %d", pathname, fd);
     }
-    r->eax = (fd >= 0) ? fd + 3 : fd;
+    r->eax = fd;
     break;
   }
   case 6: { // sys_close
     int fd = r->ebx;
     if (fd > 2) {
-      int result = close_file(fd - 3);
+      int result = vfs_close(fd);
       INFO("SYSCALL", "close(%d) = %d", fd, result);
       r->eax = result;
     } else {

@@ -4,6 +4,7 @@
 #include "mem.h"
 #include "paging.h"
 #include "utils.h"
+#include "vfs.h"
 
 #define MAX_TASK_ARGS 16
 
@@ -18,6 +19,16 @@ static char *copy_arg(const char *arg) {
   return copy;
 }
 
+static void fds_init(fd_table_t *fds) {
+  for (int i = 0; i < MAX_FDS_PER_PROCESS; i++) {
+    fds->handle[i] = -1;
+  }
+}
+
+fd_table_t *scheduler_current_fds(void) {
+  return current_task ? &current_task->fds : NULL;
+}
+
 void scheduler_init(void) {
   current_task = (tcb_t *)kmalloc(sizeof(tcb_t));
   current_task->esp = 0;
@@ -25,6 +36,7 @@ void scheduler_init(void) {
   current_task->pid = next_pid++;
   current_task->stack_base = 0;
   current_task->cr3 = paging_get_kernel_directory();
+  fds_init(&current_task->fds);
   current_task->next = current_task;
   idle_task = current_task;
 
@@ -56,6 +68,7 @@ int create_task(void (*func)(void)) {
   tcb->pid = next_pid++;
   tcb->stack_base = (uint32_t)stack;
   tcb->cr3 = paging_get_kernel_directory();
+  fds_init(&tcb->fds);
 
   tcb->next = idle_task->next;
   idle_task->next = tcb;
@@ -113,6 +126,7 @@ int create_user_task(uint32_t entry, uint32_t code_base, uint32_t code_size,
   tcb->pid = next_pid++;
   tcb->stack_base = (uint32_t)stack;
   tcb->cr3 = dir;
+  fds_init(&tcb->fds);
 
   tcb->next = idle_task->next;
   idle_task->next = tcb;
@@ -184,6 +198,8 @@ int fork_current(registers_t *r) {
   child->pid = next_pid++;
   child->stack_base = 0;
   child->cr3 = dir;
+  fds_init(&child->fds);
+  vfs_fork_fds(&child->fds);
 
   child->next = idle_task->next;
   idle_task->next = child;
@@ -198,6 +214,7 @@ void scheduler_exit_current(int exit_code) {
   if (!current_task || current_task == idle_task)
     return;
 
+  vfs_exit_fds(&current_task->fds);
   current_task->state = TASK_EXITED;
   INFO("SCHED", "Task PID %u exited with code %d", current_task->pid,
        exit_code);

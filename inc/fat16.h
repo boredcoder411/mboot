@@ -14,6 +14,7 @@ typedef struct {
   uint32_t size;
   uint32_t offset;
   bool used;
+  uint32_t refs;
 } fat16_file_t;
 
 typedef struct {
