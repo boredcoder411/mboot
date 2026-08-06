@@ -12,7 +12,7 @@ CFLAGS = -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -mno-red-zone \
          -ffunction-sections -fdata-sections \
          -DLUA_USE_C89
 
-LDFLAGS = -m elf_i386 -T ../lua.ld -nostdlib -static --gc-sections
+LDFLAGS = -m elf_i386 -Ttext 0x50000000 -e _start -nostdlib -static --gc-sections
 LIBC_OBJ = ../../build/libc.o
 CRT0_OBJ = ../../build/crt0.o
 

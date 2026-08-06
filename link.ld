@@ -10,4 +10,3 @@ SECTIONS
     .data : { *(.data*) }
     .bss : { *(.bss*) *(COMMON) }
 }
-
