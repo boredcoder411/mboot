@@ -7,18 +7,10 @@
 #define __NR_close 6
 #define __NR_exec 11
 
-uint8_t read_key(void) {
-  uint8_t key;
-  asm volatile("int $0x80" : "=a"(key) : "a"(253));
-  return key;
-}
-
-void sleep_ms(uint32_t ms) { asm volatile("int $0x80" : : "a"(252), "b"(ms)); }
-
-int has_key(void) {
-  int result;
-  asm volatile("int $0x80" : "=a"(result) : "a"(251));
-  return result;
+int fork(void) {
+  int ret;
+  asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_fork));
+  return ret;
 }
 
 ssize_t read(int fd, void *buf, size_t count) {
