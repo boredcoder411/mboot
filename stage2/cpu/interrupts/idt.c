@@ -9,6 +9,7 @@
 #include "net/udp.h"
 #include "scheduler.h"
 #include "vfs.h"
+#include "dev/vga.h"
 
 extern void syscall_handler();
 
@@ -48,20 +49,20 @@ void syscall_dispatch(registers_t *r) {
         if (c == '\b' || c == 0x7F) {
           if (line_fill > 0) {
             line_fill--;
-            write_serial('\b');
-            write_serial(' ');
-            write_serial('\b');
+            vga_write('\b');
+            vga_write(' ');
+            vga_write('\b');
           }
         } else if (c == '\n') {
           if (line_fill < (int)sizeof(line_buf))
             line_buf[line_fill++] = '\n';
-          write_serial('\r');
-          write_serial('\n');
+          vga_write('\r');
+          vga_write('\n');
           break;
         } else if (c >= ' ' && c < 0x7F) {
           if (line_fill < (int)sizeof(line_buf) - 1) {
             line_buf[line_fill++] = c;
-            write_serial(c);
+            vga_write(c);
           }
         }
       }
@@ -94,7 +95,7 @@ void syscall_dispatch(registers_t *r) {
         INFO("SYSCALL", "write(fd=%u, len=%u)", r->ebx, r->edx);
         const char *buf = (const char *)r->ecx;
         for (uint32_t i = 0; i < r->edx; i++) {
-          write_serial(buf[i]);
+          vga_write(buf[i]);
         }
         r->eax = r->edx;
         break;
