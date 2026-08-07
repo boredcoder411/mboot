@@ -101,6 +101,7 @@ void syscall_dispatch(registers_t *r) {
         INFO("SYSCALL", "write(fd=%u, len=%u)", r->ebx, r->edx);
         const char *buf = (const char *)r->ecx;
         for (uint32_t i = 0; i < r->edx; i++) {
+          write_serial(buf[i]);
           vga_write(buf[i]);
         }
         r->eax = r->edx;
@@ -132,9 +133,15 @@ void syscall_dispatch(registers_t *r) {
   }
   case 11: { // sys_exec
     const char *pathname = (const char *)r->ebx;
-    char *argv[] = {(char *)pathname, NULL};
-    int pid = spawn_elf(pathname, 1, argv);
-    INFO("SYSCALL", "exec(\"%s\") = %d", pathname, pid);
+    char **argv = (char **)r->ecx;
+    int argc = (int)r->edx;
+    char *default_argv[] = {(char *)pathname, NULL};
+    if (!argv || argc <= 0) {
+      argv = default_argv;
+      argc = 1;
+    }
+    int pid = spawn_elf(pathname, argc, argv);
+    INFO("SYSCALL", "exec(\"%s\", argc=%d) = %d", pathname, argc, pid);
     r->eax = pid;
     break;
   }
