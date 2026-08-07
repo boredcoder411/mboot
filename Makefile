@@ -94,7 +94,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/io.c stage
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
 
 image: file_transforms
-	@./image.sh test_files/hi.txt build/libc.elf build/test.elf build/lua.elf build/init.elf build/demo1.elf build/demo2.elf build/fork_test.elf test_files/all.lua test_files/test.lua
+	@./image.sh test_files/hi.txt build/libc.elf build/test.elf build/lua.elf build/init.elf build/demo1.elf build/demo2.elf build/fork_test.elf $(wildcard test_files/*.lua)
 
 file_transforms: | $(BUILD)
 	@echo "Building libc as separate object..."

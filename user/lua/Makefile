@@ -10,7 +10,7 @@ CFLAGS = -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -mno-red-zone \
          -O2 -Wall -Wextra -g -c \
          -I. -I../include \
          -ffunction-sections -fdata-sections \
-         -DLUA_USE_C89
+         -DLUA_USE_C89 -DLUAI_MAXSTACK=30000
 
 LDFLAGS = -m elf_i386 -Ttext 0x50000000 -e _start -nostdlib -static --gc-sections
 LIBC_OBJ = ../../build/libc.o
