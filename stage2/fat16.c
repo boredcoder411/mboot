@@ -46,24 +46,37 @@ uint16_t get_next_cluster(uint32_t part_offset, const BPB_t *bpb,
 void get_lfn_name(lfn_entry_t *lfn_entries, int count, char *out, int outsize) {
   int pos = 0;
   for (int i = count - 1; i >= 0; i--) {
+    bool done = false;
     for (int j = 0; j < 5; j++) {
       uint16_t c = lfn_entries[i].Name1[j];
-      if (c == 0 || pos >= outsize - 1)
+      if (c == 0 || c == 0xFFFF || pos >= outsize - 1) {
+        done = true;
         break;
+      }
       out[pos++] = (char)c;
     }
+    if (done)
+      break;
     for (int j = 0; j < 6; j++) {
       uint16_t c = lfn_entries[i].Name2[j];
-      if (c == 0 || pos >= outsize - 1)
+      if (c == 0 || c == 0xFFFF || pos >= outsize - 1) {
+        done = true;
         break;
+      }
       out[pos++] = (char)c;
     }
+    if (done)
+      break;
     for (int j = 0; j < 2; j++) {
       uint16_t c = lfn_entries[i].Name3[j];
-      if (c == 0 || pos >= outsize - 1)
+      if (c == 0 || c == 0xFFFF || pos >= outsize - 1) {
+        done = true;
         break;
+      }
       out[pos++] = (char)c;
     }
+    if (done)
+      break;
   }
   out[pos] = 0;
 }
@@ -188,7 +201,9 @@ static inline uint32_t cluster_offset(uint16_t cluster) {
 static bool find_file_in_dir(uint16_t start_cluster, const char *target_name,
                              dir_t *out_dir) {
   uint32_t cluster_size = g_bpb.BytsPerSec * g_bpb.SecPerClus;
-  uint8_t *buffer = kmalloc(cluster_size);
+  uint32_t root_size = g_bpb.RootEntCnt * sizeof(dir_t);
+  uint32_t buffer_size = (start_cluster == 0) ? root_size : cluster_size;
+  uint8_t *buffer = kmalloc(buffer_size);
   if (!buffer)
     return false;
 
@@ -197,10 +212,11 @@ static bool find_file_in_dir(uint16_t start_cluster, const char *target_name,
     uint32_t offset = (cluster == 0) ? (g_part_offset + BPB_Root_addr(&g_bpb))
                                      : cluster_offset(cluster);
 
-    if (!read_bytes(offset, buffer, cluster_size))
+    uint32_t read_size = (cluster == 0) ? root_size : cluster_size;
+    if (!read_bytes(offset, buffer, read_size))
       break;
 
-    int entries = cluster_size / sizeof(dir_t);
+    int entries = read_size / sizeof(dir_t);
     lfn_entry_t lfn_entries[20];
     int lfn_count = 0;
 
@@ -247,8 +263,12 @@ static int fat16_open(const char *path) {
     return -1;
 
   const char *fname = path;
-  while (*fname == '/')
-    fname++;
+  while (*fname == '/' || (fname[0] == '.' && fname[1] == '/')) {
+    if (*fname == '/')
+      fname++;
+    else
+      fname += 2;
+  }
 
   dir_t dir;
   if (!find_file_in_dir(0, fname, &dir)) {
