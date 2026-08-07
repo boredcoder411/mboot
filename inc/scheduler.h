@@ -4,7 +4,7 @@
 #include "io.h"
 #include <stdint.h>
 
-#define TASK_STACK_SIZE 4096
+#define TASK_STACK_SIZE (64 * 1024)
 
 typedef enum {
   TASK_READY,
