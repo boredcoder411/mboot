@@ -1,9 +1,11 @@
 #include "dev/rtc.h"
 #include "io.h"
+#include "mem.h"
 #include "utils.h"
 
 #define RTC_ADDRESS_PORT 0x70
 #define RTC_DATA_PORT 0x71
+#define RTC_TIME_STR_SIZE 32
 
 static uint8_t get_rtc_register(uint8_t reg) {
   outb(RTC_ADDRESS_PORT, reg);
@@ -39,39 +41,29 @@ rtc_time_t rtc_time() {
 }
 
 char *fetch_rtc() {
-  static char time_str[32];
+  static char *time_str = NULL;
+  if (time_str == NULL)
+    time_str = (char *)kmalloc(RTC_TIME_STR_SIZE);
+
   rtc_time_t t = rtc_time();
 
-  char year[5], month[3], day[3], hour[3], minute[3], second[3];
-
-  itoa_time(t.year, year, 4);
-  itoa_time(t.month, month, 2);
-  itoa_time(t.day, day, 2);
-  itoa_time(t.hour, hour, 2);
-  itoa_time(t.minute, minute, 2);
-  itoa_time(t.second, second, 2);
-
   int i = 0;
-  time_str[i++] = year[0];
-  time_str[i++] = year[1];
-  time_str[i++] = year[2];
-  time_str[i++] = year[3];
+  itoa_time(t.year, &time_str[i], 4);
+  i += 4;
   time_str[i++] = '-';
-  time_str[i++] = month[0];
-  time_str[i++] = month[1];
+  itoa_time(t.month, &time_str[i], 2);
+  i += 2;
   time_str[i++] = '-';
-  time_str[i++] = day[0];
-  time_str[i++] = day[1];
+  itoa_time(t.day, &time_str[i], 2);
+  i += 2;
   time_str[i++] = ' ';
-  time_str[i++] = hour[0];
-  time_str[i++] = hour[1];
+  itoa_time(t.hour, &time_str[i], 2);
+  i += 2;
   time_str[i++] = ':';
-  time_str[i++] = minute[0];
-  time_str[i++] = minute[1];
+  itoa_time(t.minute, &time_str[i], 2);
+  i += 2;
   time_str[i++] = ':';
-  time_str[i++] = second[0];
-  time_str[i++] = second[1];
-  time_str[i + 2] = '\0';
+  itoa_time(t.second, &time_str[i], 2);
 
   return time_str;
 }

@@ -7,12 +7,13 @@ AR = llvm-ar
 RM = rm -f
 
 CFLAGS = -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -mno-red-zone \
-         -O2 -Wall -Wextra -g -c \
+         -Os -Wall -Wextra -g0 -c \
          -I. -I../include \
          -ffunction-sections -fdata-sections \
          -DLUA_USE_C89 -DLUAI_MAXSTACK=30000
 
-LDFLAGS = -m elf_i386 -Ttext 0x50000000 -e _start -nostdlib -static --gc-sections
+LDFLAGS = -m elf_i386 -Ttext 0x50000000 -e _start -nostdlib -static \
+          --nmagic --gc-sections --strip-all
 LIBC_OBJ = ../../build/libc.o
 CRT0_OBJ = ../../build/crt0.o
 
@@ -33,7 +34,7 @@ LUAC_O = luac.o
 ALL_O = $(BASE_O) $(LUA_O) $(LUAC_O)
 ALL_T = $(LUA_A) $(LUA_T) $(LUAC_T)
 
-all: $(ALL_T)
+all: $(LUA_T)
 
 $(LUA_A): $(BASE_O)
 	$(AR) rcs $@ $(BASE_O)

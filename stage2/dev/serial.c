@@ -63,26 +63,20 @@ static void serial_print_str(const char *s) {
 
 static void serial_print_uint(unsigned int value, int base, int width,
                               bool pad_zero, bool uppercase) {
-  char buf[32];
   const char *digits = uppercase ? "0123456789ABCDEF" : "0123456789abcdef";
-  int i = 0;
+  char digit = digits[value % base];
 
-  if (value == 0) {
-    buf[i++] = '0';
+  if (value >= (unsigned int)base) {
+    serial_print_uint(value / base, base, width > 0 ? width - 1 : 0, pad_zero,
+                      uppercase);
   } else {
-    while (value > 0 && i < (int)sizeof(buf)) {
-      buf[i++] = digits[value % base];
-      value /= base;
+    while (width > 1) {
+      write_serial(pad_zero ? '0' : ' ');
+      width--;
     }
   }
 
-  while (i < width) {
-    buf[i++] = pad_zero ? '0' : ' ';
-  }
-
-  for (int j = i - 1; j >= 0; j--) {
-    write_serial(buf[j]);
-  }
+  write_serial(digit);
 }
 
 static void serial_print_int(int value, int base, int width, bool pad_zero,

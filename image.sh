@@ -3,7 +3,8 @@ set -e
 
 DISK_IMG="image.img"
 BOOT_FILE="boot.bin"
-DISK_SIZE_MB=64
+DISK_SIZE_MB=${DISK_SIZE_MB:-}
+DISK_MIN_SIZE_MB=${DISK_MIN_SIZE_MB:-16}
 SECTOR_SIZE=512
 VOL_LABEL="DATA"
 
@@ -11,6 +12,24 @@ FILES_TO_ADD=("$@")
 
 BOOT_SIZE_BYTES=$(stat -c%s "$BOOT_FILE" 2>/dev/null || stat -f%z "$BOOT_FILE")
 BOOT_SECTORS=$(( (BOOT_SIZE_BYTES + SECTOR_SIZE - 1) / SECTOR_SIZE ))
+
+if [ -z "$DISK_SIZE_MB" ]; then
+  PAYLOAD_BYTES=0
+  for f in "${FILES_TO_ADD[@]}"; do
+    if [ -f "$f" ]; then
+      FILE_SIZE_BYTES=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f")
+      PAYLOAD_BYTES=$(( PAYLOAD_BYTES + FILE_SIZE_BYTES ))
+    fi
+  done
+
+  # FAT metadata, directory entries, and cluster rounding need headroom.
+  REQUIRED_BYTES=$(( BOOT_SIZE_BYTES + PAYLOAD_BYTES + 2 * 1024 * 1024 ))
+  DISK_SIZE_MB=$(( (REQUIRED_BYTES + 1024 * 1024 - 1) / (1024 * 1024) ))
+  if [ "$DISK_SIZE_MB" -lt "$DISK_MIN_SIZE_MB" ]; then
+    DISK_SIZE_MB=$DISK_MIN_SIZE_MB
+  fi
+fi
+
 DISK_SECTORS=$(( (DISK_SIZE_MB * 1024 * 1024) / SECTOR_SIZE ))
 
 echo "Boot.bin: $BOOT_SIZE_BYTES bytes = $BOOT_SECTORS sectors"
@@ -83,4 +102,3 @@ fi
 echo "Disk image $DISK_IMG created successfully!"
 echo " - Partition 1: boot.bin ($BOOT_SECTORS sectors)"
 echo " - Partition 2: FAT16 ($P2_SIZE sectors)"
-

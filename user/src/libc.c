@@ -42,6 +42,8 @@ int open(const char *pathname, int flags) {
   asm volatile("int $0x80"
                : "=a"(ret)
                : "0"(__NR_open), "b"(pathname), "c"(flags), "d"(0));
+  if (ret < 0)
+    errno = ENOENT;
   return ret;
 }
 

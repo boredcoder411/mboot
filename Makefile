@@ -2,10 +2,22 @@ CC = clang
 LD = ld.lld
 OBJCOPY = llvm-objcopy
 
+DEBUG ?= 0
+
 CFLAGS = -target i386-elf -ffreestanding -fno-pic -fno-pie -mno-red-zone \
-         -Wall -Wextra -Werror -g -c -Iinc/ -Os \
+         -Wall -Wextra -Werror -c -Iinc/ -Os \
          -ffunction-sections -fdata-sections -flto
 LDFLAGS = -m elf_i386 -T link.ld -nostdlib -static --gc-sections -o kernel.elf
+USER_CFLAGS = -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic \
+              -Iuser/include -Os -g0 -ffunction-sections -fdata-sections
+USER_LDFLAGS = -m elf_i386 --nmagic --gc-sections --strip-all -static
+LIBC_LDFLAGS = -m elf_i386 --nmagic --strip-all -static
+
+ifeq ($(DEBUG),1)
+CFLAGS += -g
+else
+CFLAGS += -g0
+endif
 
 BUILD = build
 
@@ -92,35 +104,36 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/io.c stage
 	
 	$(OBJCOPY) --only-keep-debug kernel.elf kernel.sym
 	$(OBJCOPY) -O binary kernel.elf kernel.bin
+	$(OBJCOPY) --strip-all kernel.elf
 
 image: file_transforms
 	@./image.sh test_files/hi.txt build/libc.elf build/test.elf build/lua.elf build/init.elf build/demo1.elf build/demo2.elf build/fork_test.elf $(wildcard test_files/*.lua)
 
 file_transforms: | $(BUILD)
 	@echo "Building libc as separate object..."
-	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c user/src/libc.c -o $(BUILD)/libc.o
+	$(CC) $(USER_CFLAGS) -c user/src/libc.c -o $(BUILD)/libc.o
 	@echo "Building test program as separate object..."
-	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c test_files/test.c -o $(BUILD)/test.o
+	$(CC) $(USER_CFLAGS) -c test_files/test.c -o $(BUILD)/test.o
 	@echo "Building fork test program..."
-	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c test_files/fork_test.c -o $(BUILD)/fork_test.o
+	$(CC) $(USER_CFLAGS) -c test_files/fork_test.c -o $(BUILD)/fork_test.o
 	@echo "Building demo programs..."
-	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c test_files/demo_task1.c -o $(BUILD)/demo1.o
-	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c test_files/demo_task2.c -o $(BUILD)/demo2.o
+	$(CC) $(USER_CFLAGS) -c test_files/demo_task1.c -o $(BUILD)/demo1.o
+	$(CC) $(USER_CFLAGS) -c test_files/demo_task2.c -o $(BUILD)/demo2.o
 	@echo "Building init program..."
-	$(CC) -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -Iuser/include -c user/src/init.c -o $(BUILD)/init.o
+	$(CC) $(USER_CFLAGS) -c user/src/init.c -o $(BUILD)/init.o
 	@echo "Building entry points..."
 	nasm -f elf user/src/crt0.s -o $(BUILD)/crt0.o
 	@echo "Creating libc.elf..."
-	$(LD) $(BUILD)/libc.o -Ttext 0x40000000 -m elf_i386 -static -o $(BUILD)/libc.elf
+	$(LD) $(BUILD)/libc.o -Ttext 0x40000000 $(LIBC_LDFLAGS) -o $(BUILD)/libc.elf
 	@echo "Creating test.elf..."
-	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/test.o -m elf_i386 -Ttext 0x50000000 -e _start -static -o $(BUILD)/test.elf
+	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/test.o -Ttext 0x50000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/test.elf
 	@echo "Creating fork_test.elf..."
-	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/fork_test.o -m elf_i386 -Ttext 0x53000000 -e _start -static -o $(BUILD)/fork_test.elf
+	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/fork_test.o -Ttext 0x53000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/fork_test.elf
 	@echo "Creating demo ELFs..."
-	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/demo1.o -m elf_i386 -Ttext 0x51000000 -e _start -static -o $(BUILD)/demo1.elf
-	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/demo2.o -m elf_i386 -Ttext 0x52000000 -e _start -static -o $(BUILD)/demo2.elf
+	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/demo1.o -Ttext 0x51000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/demo1.elf
+	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/demo2.o -Ttext 0x52000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/demo2.elf
 	@echo "Creating init.elf..."
-	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/init.o -m elf_i386 -Ttext 0x48000000 -e _start -static -o $(BUILD)/init.elf
+	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/init.o -Ttext 0x48000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/init.elf
 	@echo "Building Lua 5.5.0..."
 	$(MAKE) -C user/lua -j4
 	cp user/lua/lua $(BUILD)/lua.elf
@@ -130,6 +143,7 @@ format:
 
 clean:
 	rm -rf $(BUILD)
+	$(MAKE) -C user/lua clean
 	rm -f *.bin
 	rm -f kernel.sym
 	rm -f kernel.elf

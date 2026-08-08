@@ -153,11 +153,15 @@ int udp_server_recv(uint16_t port, uint8_t src_ip_out[4],
 int udp_send_local(uint16_t src_port, const uint8_t dst_ip[4],
                    uint16_t dst_port, const uint8_t *payload,
                    uint16_t payload_len) {
-  uint8_t src_ip[4];
-  if (ipv4_get_address(src_ip) < 0)
+  uint8_t *src_ip = (uint8_t *)kmalloc(4);
+  if (ipv4_get_address(src_ip) <= 0) {
+    kfree(src_ip);
     return -1;
-  return udp_send(src_ip, dst_ip, NULL, src_port, dst_port, payload,
-                  payload_len);
+  }
+  int result =
+      udp_send(src_ip, dst_ip, NULL, src_port, dst_port, payload, payload_len);
+  kfree(src_ip);
+  return result;
 }
 
 void udp_init(void) {
@@ -190,13 +194,17 @@ int udp_bind(uint16_t port, udp_handler_t handler) {
 int udp_send(const uint8_t src_ip[4], const uint8_t dst_ip[4],
              const uint8_t next_hop_mac[6], uint16_t src_port,
              uint16_t dst_port, const void *payload, uint16_t payload_len) {
-  uint8_t resolved_next_hop[6];
+  uint8_t *resolved_next_hop = NULL;
+  uint8_t *dst_lookup = NULL;
   if (next_hop_mac == NULL) {
-    uint8_t dst_lookup[4];
-    memcpy(dst_lookup, dst_ip, sizeof(dst_lookup));
+    resolved_next_hop = (uint8_t *)kmalloc(6);
+    dst_lookup = (uint8_t *)kmalloc(4);
+    memcpy(dst_lookup, dst_ip, 4);
     if (!arp_try_get_mac(dst_lookup, resolved_next_hop)) {
       INFO("UDP", "No ARP entry for %d.%d.%d.%d", dst_ip[0], dst_ip[1],
            dst_ip[2], dst_ip[3]);
+      kfree(dst_lookup);
+      kfree(resolved_next_hop);
       return -1;
     }
     next_hop_mac = resolved_next_hop;
@@ -222,6 +230,8 @@ int udp_send(const uint8_t src_ip[4], const uint8_t dst_ip[4],
       ipv4_send_packet(src_ip, dst_ip, next_hop_mac, IPV4_PROTOCOL_UDP,
                        udp_tx_identification++, segment, segment_len);
   kfree(segment);
+  kfree(dst_lookup);
+  kfree(resolved_next_hop);
   return result;
 }
 
