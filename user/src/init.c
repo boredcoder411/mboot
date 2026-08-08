@@ -68,7 +68,8 @@ int main(int argc, char **argv) {
   }
 
   printf("init: launching Lua interpreter\n");
-  system("/lua.elf");
+  char *lua_argv[] = {"/lua.elf", NULL};
+  execv("/lua.elf", lua_argv);
 
   uint8_t buf[1472];
   uint8_t peer_ip[4];

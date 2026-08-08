@@ -51,6 +51,18 @@ int close(int fd) {
   return ret;
 }
 
+int execv(const char *pathname, char *const argv[]) {
+  int argc = 0;
+  while (argv && argv[argc])
+    argc++;
+
+  int ret;
+  asm volatile("int $0x80"
+               : "=a"(ret)
+               : "0"(__NR_exec), "b"(pathname), "c"(argv), "d"(argc));
+  return ret;
+}
+
 void *memcpy(void *dst, const void *src, uint32_t size) {
   uint8_t *d = (uint8_t *)dst;
   const uint8_t *s = (const uint8_t *)src;
