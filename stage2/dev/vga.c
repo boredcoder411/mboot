@@ -33,6 +33,9 @@ void vga_write(char c) {
                 vga_buffer[pos] = (uint16_t)' ' | VGA_WHITE_ON_BLACK;
             }
             break;
+        case '\t':
+            cur_x = (cur_x + 8) & ~(8 - 1);
+            break;
         default:
             vga_buffer[pos] = (uint16_t)c | VGA_WHITE_ON_BLACK;
             cur_x++;
