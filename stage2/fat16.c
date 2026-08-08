@@ -372,6 +372,13 @@ static int fat16_read(int fd, void *buffer, size_t size) {
   return (int)bytes_read;
 }
 
+static int fat16_write(int fd, const void *buffer, size_t size) {
+  (void)fd;
+  (void)buffer;
+  (void)size;
+  return -1;
+}
+
 int fat16_get_size(int fd) { return open_files[fd].size; }
 
 void fat16_init() {
@@ -421,6 +428,7 @@ void fat16_init() {
   fat16_driver.open_file = fat16_open;
   fat16_driver.close_file = fat16_close;
   fat16_driver.read_file = fat16_read;
+  fat16_driver.write_file = fat16_write;
   fat16_driver.dup_file = fat16_dup;
   register_vfs_driver(&fat16_driver);
 
