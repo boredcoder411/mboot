@@ -107,6 +107,12 @@ void syscall_dispatch(registers_t *r) {
         r->eax = r->edx;
         break;
       }
+    } else if (r->ebx > 2) {
+      uint32_t fd = r->ebx;
+      INFO("SYSCALL", "write(fd=%u, len=%u)", fd, r->edx);
+      r->eax = vfs_write(fd, (const void *)r->ecx, r->edx);
+      INFO("SYSCALL", "write -> %d", r->eax);
+      break;
     }
     r->eax = -1;
     break;
