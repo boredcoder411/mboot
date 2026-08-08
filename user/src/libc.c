@@ -1225,35 +1225,35 @@ int raise(int sig) {
 }
 
 /* ===== setjmp.h ===== */
-int setjmp(jmp_buf env) {
-  int ret;
+__attribute__((naked, returns_twice)) int setjmp(jmp_buf env) {
   asm volatile(
-    "movl %%ebx, (%0)\n"
-    "movl %%esi, 4(%0)\n"
-    "movl %%edi, 8(%0)\n"
-    "movl %%ebp, 12(%0)\n"
-    "movl %%esp, 16(%0)\n"
-    "movl (%%esp), %%eax\n"
-    "movl %%eax, 20(%0)\n"
-    "xorl %%eax, %%eax\n"
-    : "=r"(ret) : "0"(env) : "memory"
-  );
-  return 0;
+      "movl 4(%esp), %eax\n"
+      "movl %ebx, 0(%eax)\n"
+      "movl %esi, 4(%eax)\n"
+      "movl %edi, 8(%eax)\n"
+      "movl %ebp, 12(%eax)\n"
+      "leal 4(%esp), %edx\n"
+      "movl %edx, 16(%eax)\n"
+      "movl (%esp), %edx\n"
+      "movl %edx, 20(%eax)\n"
+      "xorl %eax, %eax\n"
+      "ret\n");
 }
 
-void longjmp(jmp_buf env, int val) {
+__attribute__((naked, noreturn)) void longjmp(jmp_buf env, int val) {
   asm volatile(
-    "movl (%0), %%ebx\n"
-    "movl 4(%0), %%esi\n"
-    "movl 8(%0), %%edi\n"
-    "movl 12(%0), %%ebp\n"
-    "movl 16(%0), %%esp\n"
-    "movl %1, %%eax\n"
-    "jmp *20(%0)\n"
-    :
-    : "r"(env), "r"(val)
-    : "memory"
-  );
+      "movl 4(%esp), %edx\n"
+      "movl 8(%esp), %eax\n"
+      "testl %eax, %eax\n"
+      "jnz 1f\n"
+      "movl $1, %eax\n"
+      "1:\n"
+      "movl 0(%edx), %ebx\n"
+      "movl 4(%edx), %esi\n"
+      "movl 8(%edx), %edi\n"
+      "movl 12(%edx), %ebp\n"
+      "movl 16(%edx), %esp\n"
+      "jmp *20(%edx)\n");
 }
 
 /* ===== assert.h ===== */
