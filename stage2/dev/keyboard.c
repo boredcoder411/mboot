@@ -1,9 +1,11 @@
 #include "dev/keyboard.h"
 #include "cpu/interrupts/irq.h"
 #include "cpu/pic/pic.h"
+#include "dev/tty.h"
 #include <stdbool.h>
 
 bool shifted = false;
+bool alt_down = false;
 uint8_t keyboard_buffer[KEYBOARD_BUFFER_SIZE];
 uint16_t keyboard_buffer_head = 0;
 uint16_t keyboard_buffer_tail = 0;
@@ -59,9 +61,22 @@ void keyboard_handler(registers_t *r) {
   case 0xB6:
     shifted = false;
     return;
+
+  case 0x38:
+    alt_down = true;
+    return;
+
+  case 0xB8:
+    alt_down = false;
+    return;
   }
 
   if (scancode & 0x80) {
+    return;
+  }
+
+  if (alt_down && scancode >= 0x3B && scancode <= 0x3E) {
+    tty_handle_key(scancode, 0);
     return;
   }
 
@@ -69,7 +84,8 @@ void keyboard_handler(registers_t *r) {
   char ascii_char = map[scancode];
 
   if (ascii_char) {
-    // Add to buffer
+    tty_handle_key(scancode, ascii_char);
+
     uint16_t next_head = (keyboard_buffer_head + 1) % KEYBOARD_BUFFER_SIZE;
     if (next_head != keyboard_buffer_tail) { // Buffer not full
       keyboard_buffer[keyboard_buffer_head] = ascii_char;

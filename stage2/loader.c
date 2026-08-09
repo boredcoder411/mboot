@@ -7,6 +7,7 @@
 #include "dev/keyboard.h"
 #include "dev/pci.h"
 #include "dev/serial.h"
+#include "dev/tty.h"
 #include "elf.h"
 #include "fat16.h"
 #include "mem.h"
@@ -42,6 +43,7 @@ void loader_start(void) {
   e820_entry_t *mem_map = E820_TABLE_ADDR;
   uint16_t entry_count = *E820_ENTRY_COUNT_ADDR;
   init_alloc(entry_count, mem_map);
+  tty_init();
   paging_init();
 
   pci_enumerate();

@@ -14,3 +14,4 @@
 #define VGA_REG_DATA 0x3D5
 
 void vga_write(char c);
+void update_cursor(int x, int y);

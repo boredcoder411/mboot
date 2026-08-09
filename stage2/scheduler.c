@@ -29,6 +29,15 @@ fd_table_t *scheduler_current_fds(void) {
   return current_task ? &current_task->fds : NULL;
 }
 
+int scheduler_current_tty(void) { return current_task ? current_task->tty : 0; }
+
+int scheduler_set_current_tty(int tty) {
+  if (!current_task)
+    return -1;
+  current_task->tty = tty;
+  return 0;
+}
+
 void scheduler_init(void) {
   current_task = (tcb_t *)kmalloc(sizeof(tcb_t));
   current_task->esp = 0;
@@ -36,6 +45,7 @@ void scheduler_init(void) {
   current_task->pid = next_pid++;
   current_task->stack_base = 0;
   current_task->cr3 = paging_get_kernel_directory();
+  current_task->tty = 0;
   fds_init(&current_task->fds);
   current_task->next = current_task;
   idle_task = current_task;
@@ -68,6 +78,7 @@ int create_task(void (*func)(void)) {
   tcb->pid = next_pid++;
   tcb->stack_base = (uint32_t)stack;
   tcb->cr3 = paging_get_kernel_directory();
+  tcb->tty = scheduler_current_tty();
   fds_init(&tcb->fds);
 
   tcb->next = idle_task->next;
@@ -126,6 +137,7 @@ int create_user_task(uint32_t entry, uint32_t code_base, uint32_t code_size,
   tcb->pid = next_pid++;
   tcb->stack_base = (uint32_t)stack;
   tcb->cr3 = dir;
+  tcb->tty = scheduler_current_tty();
   fds_init(&tcb->fds);
 
   tcb->next = idle_task->next;
@@ -198,6 +210,7 @@ int fork_current(registers_t *r) {
   child->pid = next_pid++;
   child->stack_base = 0;
   child->cr3 = dir;
+  child->tty = current_task->tty;
   fds_init(&child->fds);
   vfs_fork_fds(&child->fds);
 

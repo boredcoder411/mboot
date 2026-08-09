@@ -1,5 +1,6 @@
 #include "vfs.h"
 #include "dev/serial.h"
+#include "dev/tty.h"
 #include "scheduler.h"
 
 static vfs_driver_t *current_driver = NULL;
@@ -8,6 +9,7 @@ static vfs_driver_t *current_driver = NULL;
 #define VFS_DEV_NULL (-2)
 #define VFS_DEV_ZERO (-3)
 #define VFS_DEV_FULL (-4)
+#define VFS_DEV_TTY_BASE (-32)
 
 void register_vfs_driver(vfs_driver_t *drv) { current_driver = drv; }
 
@@ -33,6 +35,29 @@ static int path_eq(const char *a, const char *b) {
   return *a == '\0' && *b == '\0';
 }
 
+static int path_has_prefix(const char *path, const char *prefix) {
+  if (!path || !prefix)
+    return 0;
+  while (*prefix) {
+    if (*path != *prefix)
+      return 0;
+    path++;
+    prefix++;
+  }
+  return 1;
+}
+
+static int tty_path_id(const char *name) {
+  if (path_eq(name, "dev/tty"))
+    return scheduler_current_tty();
+  if (!path_has_prefix(name, "dev/tty"))
+    return -1;
+  char n = name[7];
+  if (n < '1' || n > ('0' + TTY_COUNT) || name[8] != '\0')
+    return -1;
+  return n - '1';
+}
+
 static int device_open(const char *path) {
   const char *name = normalize_path(path);
   if (path_eq(name, "dev/null"))
@@ -41,6 +66,9 @@ static int device_open(const char *path) {
     return VFS_DEV_ZERO;
   if (path_eq(name, "dev/full"))
     return VFS_DEV_FULL;
+  int tty = tty_path_id(name);
+  if (tty >= 0)
+    return VFS_DEV_TTY_BASE - tty;
   return VFS_EMPTY_HANDLE;
 }
 
@@ -53,14 +81,22 @@ static int device_read(int handle, size_t size, void *dst) {
       out[i] = 0;
     return (int)size;
   }
+  if (handle <= VFS_DEV_TTY_BASE &&
+      handle > VFS_DEV_TTY_BASE - TTY_COUNT) {
+    return tty_read(VFS_DEV_TTY_BASE - handle, size, dst);
+  }
   return -1;
 }
 
-static int device_write(int handle, size_t size) {
+static int device_write(int handle, const void *src, size_t size) {
   if (handle == VFS_DEV_NULL || handle == VFS_DEV_ZERO)
     return (int)size;
   if (handle == VFS_DEV_FULL)
     return -1;
+  if (handle <= VFS_DEV_TTY_BASE &&
+      handle > VFS_DEV_TTY_BASE - TTY_COUNT) {
+    return tty_write_buf(VFS_DEV_TTY_BASE - handle, src, size);
+  }
   return -1;
 }
 
@@ -102,10 +138,8 @@ int file_read(int handle, size_t size, void *dst) {
 }
 
 int file_write(int handle, const void *src, size_t size) {
-  (void)src;
-
   if (handle < VFS_EMPTY_HANDLE)
-    return device_write(handle, size);
+    return device_write(handle, src, size);
 
   if (!current_driver || !current_driver->write_file)
     return -1;

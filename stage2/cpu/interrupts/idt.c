@@ -1,6 +1,7 @@
 #include "cpu/interrupts/idt.h"
 #include "dev/keyboard.h"
 #include "dev/serial.h"
+#include "dev/tty.h"
 #include "elf.h"
 #include "io.h"
 #include "net/arp.h"
@@ -28,63 +29,8 @@ void syscall_dispatch(registers_t *r) {
     break;
   }
   case 3: {            // sys_read
-    if (r->ebx == 0) { // stdin — line-buffered keyboard with echo
-      static char line_buf[256];
-      static int line_fill = 0;
-      static int line_pos = 0;
-
-      // Drain already-buffered line
-      if (line_pos < line_fill) {
-        uint32_t take = r->edx;
-        if ((uint32_t)(line_fill - line_pos) < take)
-          take = line_fill - line_pos;
-        uint8_t *dst = (uint8_t *)r->ecx;
-        for (uint32_t i = 0; i < take; i++)
-          dst[i] = line_buf[line_pos++];
-        r->eax = take;
-        break;
-      }
-
-      // Read a fresh line from the keyboard with echo
-      line_fill = 0;
-      line_pos = 0;
-      for (;;) {
-        uint8_t c = keyboard_read_key();
-        if (c == '\r')
-          c = '\n';
-        if (c == '\b' || c == 0x7F) {
-          if (line_fill > 0) {
-            line_fill--;
-            vga_write('\b');
-            vga_write(' ');
-            vga_write('\b');
-          }
-        } else if (c == '\n') {
-          if (line_fill < (int)sizeof(line_buf))
-            line_buf[line_fill++] = '\n';
-          vga_write('\r');
-          vga_write('\n');
-          break;
-        } else if (c >= ' ' && c < 0x7F) {
-          if (line_fill < (int)sizeof(line_buf) - 1) {
-            line_buf[line_fill++] = c;
-            vga_write(c);
-          }
-        }
-      }
-
-      // Return first byte(s)
-      if (line_fill > 0) {
-        uint32_t take = r->edx;
-        if ((uint32_t)line_fill < take)
-          take = line_fill;
-        uint8_t *dst = (uint8_t *)r->ecx;
-        for (uint32_t i = 0; i < take; i++)
-          dst[i] = line_buf[line_pos++];
-        r->eax = take;
-      } else {
-        r->eax = 0;
-      }
+    if (r->ebx == 0) {
+      r->eax = tty_read(scheduler_current_tty(), r->edx, (void *)r->ecx);
     } else if (r->ebx > 2) {
       uint32_t fd = r->ebx;
       INFO("SYSCALL", "read(fd=%u, count=%u)", fd, r->edx);
@@ -102,8 +48,8 @@ void syscall_dispatch(registers_t *r) {
         const char *buf = (const char *)r->ecx;
         for (uint32_t i = 0; i < r->edx; i++) {
           write_serial(buf[i]);
-          vga_write(buf[i]);
         }
+        tty_write_buf(scheduler_current_tty(), buf, r->edx);
         r->eax = r->edx;
         break;
       }
@@ -149,6 +95,15 @@ void syscall_dispatch(registers_t *r) {
     int pid = spawn_elf(pathname, argc, argv);
     INFO("SYSCALL", "exec(\"%s\", argc=%d) = %d", pathname, argc, pid);
     r->eax = pid;
+    break;
+  }
+  case 12: { // sys_set_tty
+    int tty = (int)r->ebx;
+    if (tty_valid(tty)) {
+      r->eax = scheduler_set_current_tty(tty);
+    } else {
+      r->eax = -1;
+    }
     break;
   }
   case 200: { // sys_net_init
