@@ -1,6 +1,8 @@
 [org 0x7c00]
 
-LOADER_OFFSET equ 0x1000
+LOADER_OFFSET equ 0x10000
+LOADER_SEG equ 0x1000
+LOADER_OFF equ 0x0000
 
 mov [BOOT_DISK], dl
 
@@ -15,9 +17,15 @@ call load_kernel
 jmp bootsector_memory
 
 detect_memory:
+    E820_SEG equ 0x7000
+    E820_MAP_OFF equ 0x1000
+    E820_COUNT_OFF equ 0x0FF0
+
+    mov ax, E820_SEG
+    mov es, ax
     xor ebx, ebx            ; Start with EBX = 0
-    mov edi, E820_MAP_ADDR  ; Buffer to store entries
-    mov word [E820_COUNT_ADDR], 0 ; Initialize entry count to 0
+    mov di, E820_MAP_OFF    ; Buffer to store entries
+    mov word [es:E820_COUNT_OFF], 0 ; Initialize entry count to 0
 
 .loop:
     mov eax, 0xE820         ; E820 function
@@ -33,8 +41,8 @@ detect_memory:
     test ebx, ebx           ; If EBX is 0, we are done
     jz .done
 
-    inc word [E820_COUNT_ADDR] ; Increment entry count
-    add edi, 24             ; Move to the next 24-byte entry slot
+    inc word [es:E820_COUNT_OFF] ; Increment entry count
+    add di, 24              ; Move to the next 24-byte entry slot
     jmp .loop
 
 .done:
@@ -50,7 +58,9 @@ detect_memory:
 
 [bits 16]
 load_kernel:
-	mov bx, LOADER_OFFSET
+	mov ax, LOADER_SEG
+	mov es, ax
+	mov bx, LOADER_OFF
 	mov dh, NUM_STAGE2_SECTORS
 	mov dl, [BOOT_DISK]
 	call disk_load
@@ -92,10 +102,6 @@ disk_load:
 
 [bits 16]
 bootsector_memory:
-    ; Address to store the E820 map and its entry count
-    E820_MAP_ADDR equ 0x9000
-    E820_COUNT_ADDR equ 0x8E00
-
     call detect_memory
 	call switch_to_pm
 	jmp $

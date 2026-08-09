@@ -18,8 +18,8 @@
 
 extern void enable_fpu(void);
 
-#define E820_TABLE_ADDR ((e820_entry_t *)0x9000)
-#define E820_ENTRY_COUNT_ADDR ((uint16_t *)0x8E00)
+#define E820_TABLE_ADDR ((e820_entry_t *)0x71000)
+#define E820_ENTRY_COUNT_ADDR ((uint16_t *)0x70FF0)
 
 #ifdef ALLOC_DBG
 int malloc_calls;
