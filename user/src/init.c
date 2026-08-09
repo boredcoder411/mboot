@@ -67,9 +67,13 @@ int main(int argc, char **argv) {
     printf("init: failed to bind UDP port 7\n");
   }
 
-  printf("init: launching Lua interpreter\n");
   char *lua_argv[] = {"/lua.elf", NULL};
+  printf("init: launching Lua interpreter\n");
   execv("/lua.elf", lua_argv);
+
+  char *test_argv[] = {"/demo1.elf", NULL};
+  printf("init: launching demo process\n");
+  execv("/demo1.elf", test_argv);
 
   uint8_t buf[1472];
   uint8_t peer_ip[4];
