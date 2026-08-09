@@ -7,6 +7,7 @@
 #define __NR_open 5
 #define __NR_close 6
 #define __NR_exec 11
+#define __NR_set_tty 12
 
 int fork(void) {
   int ret;
@@ -62,6 +63,19 @@ int execv(const char *pathname, char *const argv[]) {
   asm volatile("int $0x80"
                : "=a"(ret)
                : "0"(__NR_exec), "b"(pathname), "c"(argv), "d"(argc));
+  return ret;
+}
+
+int set_tty(int tty) {
+  if (tty < 1) {
+    errno = EINVAL;
+    return -1;
+  }
+
+  int ret;
+  asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_set_tty), "b"(tty - 1));
+  if (ret < 0)
+    errno = EINVAL;
   return ret;
 }
 
