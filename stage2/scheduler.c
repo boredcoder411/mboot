@@ -25,6 +25,19 @@ static void fds_init(fd_table_t *fds) {
   }
 }
 
+static uint32_t page_align_down(uint32_t x) { return x & ~(PAGE_SIZE - 1); }
+
+static uint32_t page_align_up(uint32_t x) {
+  return (uint32_t)align_up_uintptr(x, PAGE_SIZE);
+}
+
+static void *alloc_user_page(void) {
+  uintptr_t raw = (uintptr_t)kmalloc(PAGE_SIZE * 2);
+  void *page = (void *)align_up_uintptr(raw, PAGE_SIZE);
+  memset(page, 0, PAGE_SIZE);
+  return page;
+}
+
 fd_table_t *scheduler_current_fds(void) {
   return current_task ? &current_task->fds : NULL;
 }
@@ -91,19 +104,67 @@ int create_task(void (*func)(void)) {
 
 int create_user_task(uint32_t entry, uint32_t code_base, uint32_t code_size,
                      int argc, char **argv) {
+  user_segment_t segment = {
+      .vaddr = code_base,
+      .filesz = code_size,
+      .memsz = code_size,
+      .data = (const void *)code_base,
+  };
+  return create_user_task_from_segments(entry, &segment, 1, argc, argv);
+}
+
+int create_user_task_from_segments(uint32_t entry, const user_segment_t *segments,
+                                   int segment_count, int argc, char **argv) {
   if (argc < 0)
     return -1;
   if (argc > MAX_TASK_ARGS)
     argc = MAX_TASK_ARGS;
+  if (!segments || segment_count <= 0)
+    return -1;
 
   tcb_t *tcb = (tcb_t *)kmalloc(sizeof(tcb_t));
   uint8_t *stack = (uint8_t *)kmalloc(TASK_STACK_SIZE);
   uint32_t dir = paging_create_directory();
 
-  for (uint32_t off = 0; off < code_size; off += PAGE_SIZE) {
-    paging_map_page(dir, code_base + off, code_base + off,
+  uint32_t image_base = 0xFFFFFFFFU;
+  uint32_t image_end = 0;
+  for (int i = 0; i < segment_count; i++) {
+    uint32_t seg_base = page_align_down(segments[i].vaddr);
+    uint32_t seg_end = page_align_up(segments[i].vaddr + segments[i].memsz);
+    if (seg_base < image_base)
+      image_base = seg_base;
+    if (seg_end > image_end)
+      image_end = seg_end;
+  }
+  if (image_base >= image_end)
+    return -1;
+
+  uint32_t page_count = (image_end - image_base) / PAGE_SIZE;
+  uint32_t *image_pages = (uint32_t *)kmalloc(page_count * sizeof(uint32_t));
+  for (uint32_t i = 0; i < page_count; i++) {
+    void *page = alloc_user_page();
+    image_pages[i] = (uint32_t)page;
+    paging_map_page(dir, image_base + i * PAGE_SIZE, image_pages[i],
                     PAGE_USER | PAGE_WRITABLE);
   }
+
+  for (int i = 0; i < segment_count; i++) {
+    uint32_t dst_vaddr = segments[i].vaddr;
+    const uint8_t *src = (const uint8_t *)segments[i].data;
+    uint32_t remaining = segments[i].filesz;
+    while (remaining > 0) {
+      uint32_t page_idx = (page_align_down(dst_vaddr) - image_base) / PAGE_SIZE;
+      uint32_t page_off = dst_vaddr & (PAGE_SIZE - 1);
+      uint32_t chunk = PAGE_SIZE - page_off;
+      if (chunk > remaining)
+        chunk = remaining;
+      memcpy((void *)(image_pages[page_idx] + page_off), src, chunk);
+      src += chunk;
+      dst_vaddr += chunk;
+      remaining -= chunk;
+    }
+  }
+
   for (uint32_t addr = (uint32_t)stack & 0xFFFFF000U;
        addr < (uint32_t)stack + TASK_STACK_SIZE;
        addr += PAGE_SIZE) {
@@ -144,9 +205,9 @@ int create_user_task(uint32_t entry, uint32_t code_base, uint32_t code_size,
   idle_task->next = tcb;
 
   INFO("SCHED", "Created user task PID %u @ 0x%X (stack 0x%X, entry 0x%X, "
-                "CR3 0x%X, code 0x%X+0x%X)",
-       tcb->pid, (uint32_t)tcb, tcb->stack_base, entry, tcb->cr3, code_base,
-       code_size);
+                "CR3 0x%X, image 0x%X+0x%X)",
+       tcb->pid, (uint32_t)tcb, tcb->stack_base, entry, tcb->cr3, image_base,
+       image_end - image_base);
 
   return tcb->pid;
 }

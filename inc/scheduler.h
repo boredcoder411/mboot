@@ -24,9 +24,18 @@ typedef struct task_control_block {
   struct task_control_block *next;
 } tcb_t;
 
+typedef struct {
+  uint32_t vaddr;
+  uint32_t filesz;
+  uint32_t memsz;
+  const void *data;
+} user_segment_t;
+
 int create_task(void (*func)(void));
 int create_user_task(uint32_t entry, uint32_t code_base, uint32_t code_size,
                      int argc, char **argv);
+int create_user_task_from_segments(uint32_t entry, const user_segment_t *segments,
+                                   int segment_count, int argc, char **argv);
 int fork_current(registers_t *r);
 void scheduler_init();
 void scheduler_exit_current(int exit_code);

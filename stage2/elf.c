@@ -42,29 +42,36 @@ int spawn_elf(const char *path, int argc, char **argv) {
   file_close(file);
 
   INFO("ELF", "%s loaded (%d bytes)", path, size);
-  if (load_elf(buf) != 0) {
+  Elf32_Ehdr *eh = (Elf32_Ehdr *)buf;
+  if (eh->magic != ELF_MAGIC) {
     INFO("ELF", "error: %s is not a valid ELF", path);
     return -1;
   }
 
-  Elf32_Ehdr *eh = (Elf32_Ehdr *)buf;
-  uint32_t code_base = 0xFFFFFFFF;
-  uint32_t code_end = 0;
+  user_segment_t *segments =
+      (user_segment_t *)kmalloc(eh->phnum * sizeof(user_segment_t));
+  int segment_count = 0;
   Elf32_Phdr *ph = (Elf32_Phdr *)((uint8_t *)buf + eh->phoff);
   for (int i = 0; i < eh->phnum; i++, ph++) {
     if (ph->type != PT_LOAD)
       continue;
     if (ph->vaddr < 0x1000000U)
       continue; // skip ld.lld ELF-header segment artifact at 0x400000
-    if (ph->vaddr < code_base)
-      code_base = ph->vaddr;
-    uint32_t seg_end = ph->vaddr + ph->memsz;
-    if (seg_end > code_end)
-      code_end = seg_end;
+    segments[segment_count++] = (user_segment_t){
+        .vaddr = ph->vaddr,
+        .filesz = ph->filesz,
+        .memsz = ph->memsz,
+        .data = (uint8_t *)buf + ph->offset,
+    };
   }
 
-  return create_user_task(eh->entry, code_base, code_end - code_base, argc,
-                          argv);
+  if (segment_count == 0) {
+    INFO("ELF", "error: %s has no loadable user segments", path);
+    return -1;
+  }
+
+  return create_user_task_from_segments(eh->entry, segments, segment_count,
+                                        argc, argv);
 }
 
 void jump_to_entry(void *elf_data) {
