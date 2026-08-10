@@ -72,6 +72,14 @@ static int device_open(const char *path) {
   return VFS_EMPTY_HANDLE;
 }
 
+static int tty_handle_id(int handle) {
+  if (handle <= VFS_DEV_TTY_BASE &&
+      handle > VFS_DEV_TTY_BASE - TTY_COUNT) {
+    return VFS_DEV_TTY_BASE - handle;
+  }
+  return -1;
+}
+
 static int device_read(int handle, size_t size, void *dst) {
   if (handle == VFS_DEV_NULL)
     return 0;
@@ -81,10 +89,9 @@ static int device_read(int handle, size_t size, void *dst) {
       out[i] = 0;
     return (int)size;
   }
-  if (handle <= VFS_DEV_TTY_BASE &&
-      handle > VFS_DEV_TTY_BASE - TTY_COUNT) {
-    return tty_read(VFS_DEV_TTY_BASE - handle, size, dst);
-  }
+  int tty = tty_handle_id(handle);
+  if (tty >= 0)
+    return tty_read(tty, size, dst);
   return -1;
 }
 
@@ -93,10 +100,9 @@ static int device_write(int handle, const void *src, size_t size) {
     return (int)size;
   if (handle == VFS_DEV_FULL)
     return -1;
-  if (handle <= VFS_DEV_TTY_BASE &&
-      handle > VFS_DEV_TTY_BASE - TTY_COUNT) {
-    return tty_write_buf(VFS_DEV_TTY_BASE - handle, src, size);
-  }
+  int tty = tty_handle_id(handle);
+  if (tty >= 0)
+    return tty_write_buf(tty, src, size);
   return -1;
 }
 
@@ -161,7 +167,7 @@ int vfs_open(const char *path) {
   for (int i = 0; i < MAX_FDS_PER_PROCESS; i++) {
     if (table->handle[i] == VFS_EMPTY_HANDLE) {
       table->handle[i] = handle;
-      return i + 3;
+      return i;
     }
   }
 
@@ -171,45 +177,82 @@ int vfs_open(const char *path) {
 }
 
 int vfs_read(int fd, size_t size, void *dst) {
-  if (fd < 3)
+  if (fd < 0)
     return -1;
 
   fd_table_t *table = scheduler_current_fds();
-  int idx = fd - 3;
-  if (!table || idx >= MAX_FDS_PER_PROCESS ||
-      table->handle[idx] == VFS_EMPTY_HANDLE)
+  if (!table || fd >= MAX_FDS_PER_PROCESS ||
+      table->handle[fd] == VFS_EMPTY_HANDLE)
     return -1;
 
-  return file_read(table->handle[idx], size, dst);
+  return file_read(table->handle[fd], size, dst);
 }
 
 int vfs_write(int fd, const void *src, size_t size) {
-  if (fd < 3)
+  if (fd < 0)
     return -1;
 
   fd_table_t *table = scheduler_current_fds();
-  int idx = fd - 3;
-  if (!table || idx >= MAX_FDS_PER_PROCESS ||
-      table->handle[idx] == VFS_EMPTY_HANDLE)
+  if (!table || fd >= MAX_FDS_PER_PROCESS ||
+      table->handle[fd] == VFS_EMPTY_HANDLE)
     return -1;
 
-  return file_write(table->handle[idx], src, size);
+  return file_write(table->handle[fd], src, size);
 }
 
 int vfs_close(int fd) {
-  if (fd < 3)
-    return 0;
-
-  fd_table_t *table = scheduler_current_fds();
-  int idx = fd - 3;
-  if (!table || idx >= MAX_FDS_PER_PROCESS ||
-      table->handle[idx] == VFS_EMPTY_HANDLE)
+  if (fd < 0)
     return -1;
 
-  int result = file_close(table->handle[idx]);
+  fd_table_t *table = scheduler_current_fds();
+  if (!table || fd >= MAX_FDS_PER_PROCESS ||
+      table->handle[fd] == VFS_EMPTY_HANDLE)
+    return -1;
+
+  int result = file_close(table->handle[fd]);
   if (result == 0)
-    table->handle[idx] = VFS_EMPTY_HANDLE;
+    table->handle[fd] = VFS_EMPTY_HANDLE;
   return result;
+}
+
+int vfs_dup2(int oldfd, int newfd) {
+  fd_table_t *table = scheduler_current_fds();
+  if (!table || oldfd < 0 || newfd < 0 || oldfd >= MAX_FDS_PER_PROCESS ||
+      newfd >= MAX_FDS_PER_PROCESS ||
+      table->handle[oldfd] == VFS_EMPTY_HANDLE)
+    return -1;
+
+  if (oldfd == newfd)
+    return newfd;
+
+  if (table->handle[newfd] != VFS_EMPTY_HANDLE)
+    vfs_close(newfd);
+
+  table->handle[newfd] = table->handle[oldfd];
+  if (table->handle[newfd] >= 0 && current_driver && current_driver->dup_file)
+    current_driver->dup_file(table->handle[newfd]);
+
+  int tty = tty_handle_id(table->handle[newfd]);
+  if (newfd == 0 && tty >= 0)
+    scheduler_set_current_tty(tty);
+
+  return newfd;
+}
+
+void vfs_init_fds(fd_table_t *table, int tty) {
+  if (!table)
+    return;
+
+  for (int i = 0; i < MAX_FDS_PER_PROCESS; i++)
+    table->handle[i] = VFS_EMPTY_HANDLE;
+
+  if (!tty_valid(tty))
+    tty = 0;
+
+  int handle = VFS_DEV_TTY_BASE - tty;
+  table->handle[0] = handle;
+  table->handle[1] = handle;
+  table->handle[2] = handle;
 }
 
 void vfs_fork_fds(fd_table_t *child) {

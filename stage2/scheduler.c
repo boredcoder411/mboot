@@ -19,10 +19,11 @@ static char *copy_arg(const char *arg) {
   return copy;
 }
 
-static void fds_init(fd_table_t *fds) {
-  for (int i = 0; i < MAX_FDS_PER_PROCESS; i++) {
-    fds->handle[i] = -1;
-  }
+static void task_init_fds(tcb_t *tcb) {
+  if (current_task && current_task != idle_task)
+    vfs_fork_fds(&tcb->fds);
+  else
+    vfs_init_fds(&tcb->fds, tcb->tty);
 }
 
 static uint32_t page_align_down(uint32_t x) { return x & ~(PAGE_SIZE - 1); }
@@ -59,7 +60,7 @@ void scheduler_init(void) {
   current_task->stack_base = 0;
   current_task->cr3 = paging_get_kernel_directory();
   current_task->tty = 0;
-  fds_init(&current_task->fds);
+  vfs_init_fds(&current_task->fds, current_task->tty);
   current_task->next = current_task;
   idle_task = current_task;
 
@@ -92,7 +93,7 @@ int create_task(void (*func)(void)) {
   tcb->stack_base = (uint32_t)stack;
   tcb->cr3 = paging_get_kernel_directory();
   tcb->tty = scheduler_current_tty();
-  fds_init(&tcb->fds);
+  task_init_fds(tcb);
 
   tcb->next = idle_task->next;
   idle_task->next = tcb;
@@ -199,7 +200,7 @@ int create_user_task_from_segments(uint32_t entry, const user_segment_t *segment
   tcb->stack_base = (uint32_t)stack;
   tcb->cr3 = dir;
   tcb->tty = scheduler_current_tty();
-  fds_init(&tcb->fds);
+  task_init_fds(tcb);
 
   tcb->next = idle_task->next;
   idle_task->next = tcb;
@@ -272,7 +273,6 @@ int fork_current(registers_t *r) {
   child->stack_base = 0;
   child->cr3 = dir;
   child->tty = current_task->tty;
-  fds_init(&child->fds);
   vfs_fork_fds(&child->fds);
 
   child->next = idle_task->next;
