@@ -22,6 +22,19 @@ static void print_ip(const char *label, const uint8_t ip[4]) {
   printf("%s %d.%d.%d.%d\n", label, ip[0], ip[1], ip[2], ip[3]);
 }
 
+static int reopen_stdio(const char *tty) {
+  int fd = open(tty, 2);
+  if (fd < 0)
+    return -1;
+
+  dup2(fd, 0);
+  dup2(fd, 1);
+  dup2(fd, 2);
+  if (fd > 2)
+    close(fd);
+  return 0;
+}
+
 int main(int argc, char **argv) {
   (void)argc;
   (void)argv;
@@ -71,9 +84,18 @@ int main(int argc, char **argv) {
   printf("init: launching Lua interpreter\n");
   execv("/lua.elf", lua_argv);
 
+  reopen_stdio("/dev/tty4");
+
   char *test_argv[] = {"/demo1.elf", NULL};
   printf("init: launching demo process\n");
-  execv("/demo1.elf", test_argv);
+  int demo_pid = fork();
+  if (demo_pid == 0) {
+    reopen_stdio("/dev/tty2");
+    int pid = execv("/demo1.elf", test_argv);
+    if (pid >= 0)
+      exit(0);
+    exit(1);
+  }
 
   uint8_t buf[1472];
   uint8_t peer_ip[4];
