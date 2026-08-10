@@ -7,7 +7,7 @@
 #define __NR_open 5
 #define __NR_close 6
 #define __NR_exec 11
-#define __NR_set_tty 12
+#define __NR_dup2 63
 
 int fork(void) {
   int ret;
@@ -66,16 +66,13 @@ int execv(const char *pathname, char *const argv[]) {
   return ret;
 }
 
-int set_tty(int tty) {
-  if (tty < 1) {
-    errno = EINVAL;
-    return -1;
-  }
-
+int dup2(int oldfd, int newfd) {
   int ret;
-  asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_set_tty), "b"(tty - 1));
+  asm volatile("int $0x80"
+               : "=a"(ret)
+               : "0"(__NR_dup2), "b"(oldfd), "c"(newfd));
   if (ret < 0)
-    errno = EINVAL;
+    errno = EBADF;
   return ret;
 }
 

@@ -23,7 +23,7 @@ typedef long ssize_t;
 int open(const char *pathname, int flags);
 int fork(void);
 int execv(const char *pathname, char *const argv[]);
-int set_tty(int tty);
+int dup2(int oldfd, int newfd);
 ssize_t read(int fd, void *buf, size_t count);
 ssize_t write(int fd, const void *buf, size_t count);
 int close(int fd);
