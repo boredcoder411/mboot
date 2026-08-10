@@ -29,38 +29,22 @@ void syscall_dispatch(registers_t *r) {
     break;
   }
   case 3: {            // sys_read
-    if (r->ebx == 0) {
-      r->eax = tty_read(scheduler_current_tty(), r->edx, (void *)r->ecx);
-    } else if (r->ebx > 2) {
-      uint32_t fd = r->ebx;
-      INFO("SYSCALL", "read(fd=%u, count=%u)", fd, r->edx);
-      r->eax = vfs_read(fd, r->edx, (void *)r->ecx);
-      INFO("SYSCALL", "read -> %d", r->eax);
-    } else {
-      r->eax = -1;
-    }
+    uint32_t fd = r->ebx;
+    INFO("SYSCALL", "read(fd=%u, count=%u)", fd, r->edx);
+    r->eax = vfs_read(fd, r->edx, (void *)r->ecx);
+    INFO("SYSCALL", "read -> %d", r->eax);
     break;
   }
   case 4: { // sys_write
-    if (r->ebx == 1 || r->ebx == 2) {
-      if (r->ecx && r->edx > 0) {
-        INFO("SYSCALL", "write(fd=%u, len=%u)", r->ebx, r->edx);
-        const char *buf = (const char *)r->ecx;
-        for (uint32_t i = 0; i < r->edx; i++) {
-          write_serial(buf[i]);
-        }
-        tty_write_buf(scheduler_current_tty(), buf, r->edx);
-        r->eax = r->edx;
-        break;
-      }
-    } else if (r->ebx > 2) {
-      uint32_t fd = r->ebx;
-      INFO("SYSCALL", "write(fd=%u, len=%u)", fd, r->edx);
-      r->eax = vfs_write(fd, (const void *)r->ecx, r->edx);
-      INFO("SYSCALL", "write -> %d", r->eax);
-      break;
+    uint32_t fd = r->ebx;
+    INFO("SYSCALL", "write(fd=%u, len=%u)", fd, r->edx);
+    r->eax = vfs_write(fd, (const void *)r->ecx, r->edx);
+    if ((int)r->eax > 0 && r->ecx) {
+      const char *buf = (const char *)r->ecx;
+      for (uint32_t i = 0; i < r->eax; i++)
+        write_serial(buf[i]);
     }
-    r->eax = -1;
+    INFO("SYSCALL", "write -> %d", r->eax);
     break;
   }
   case 5: { // sys_open
@@ -104,6 +88,13 @@ void syscall_dispatch(registers_t *r) {
     } else {
       r->eax = -1;
     }
+    break;
+  }
+  case 63: { // sys_dup2
+    int oldfd = (int)r->ebx;
+    int newfd = (int)r->ecx;
+    r->eax = vfs_dup2(oldfd, newfd);
+    INFO("SYSCALL", "dup2(%d, %d) = %d", oldfd, newfd, r->eax);
     break;
   }
   case 200: { // sys_net_init
