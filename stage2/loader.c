@@ -1,4 +1,5 @@
 #include "cpu/gdt.h"
+#include "cpu/cpuid.h"
 #include "cpu/interrupts/idt.h"
 #include "cpu/interrupts/irq.h"
 #include "cpu/interrupts/isr.h"
@@ -39,6 +40,7 @@ void loader_start(void) {
   enable_fpu();
   install_keyboard();
   init_serial();
+  cpuid_init();
 
   e820_entry_t *mem_map = E820_TABLE_ADDR;
   uint16_t entry_count = *E820_ENTRY_COUNT_ADDR;

@@ -1,6 +1,8 @@
 #include "vfs.h"
+#include "cpu/cpuid.h"
 #include "dev/serial.h"
 #include "dev/tty.h"
+#include "mem.h"
 #include "scheduler.h"
 
 static vfs_driver_t *current_driver = NULL;
@@ -9,7 +11,17 @@ static vfs_driver_t *current_driver = NULL;
 #define VFS_DEV_NULL (-2)
 #define VFS_DEV_ZERO (-3)
 #define VFS_DEV_FULL (-4)
+#define VFS_DEV_CPUINFO_BASE (-8)
 #define VFS_DEV_TTY_BASE (-32)
+#define CPUINFO_OPEN_FILES 4
+
+typedef struct {
+  int used;
+  int refs;
+  size_t offset;
+} cpuinfo_file_t;
+
+static cpuinfo_file_t cpuinfo_files[CPUINFO_OPEN_FILES];
 
 void register_vfs_driver(vfs_driver_t *drv) { current_driver = drv; }
 
@@ -58,6 +70,22 @@ static int tty_path_id(const char *name) {
   return n - '1';
 }
 
+static int cpuinfo_open(const char *name) {
+  if (!path_eq(name, "dev/cpuinfo"))
+    return VFS_EMPTY_HANDLE;
+
+  for (int i = 0; i < CPUINFO_OPEN_FILES; i++) {
+    if (!cpuinfo_files[i].used) {
+      cpuinfo_files[i].used = 1;
+      cpuinfo_files[i].refs = 1;
+      cpuinfo_files[i].offset = 0;
+      return VFS_DEV_CPUINFO_BASE - i;
+    }
+  }
+
+  return VFS_EMPTY_HANDLE;
+}
+
 static int device_open(const char *path) {
   const char *name = normalize_path(path);
   if (path_eq(name, "dev/null"))
@@ -66,10 +94,21 @@ static int device_open(const char *path) {
     return VFS_DEV_ZERO;
   if (path_eq(name, "dev/full"))
     return VFS_DEV_FULL;
+  int cpuinfo = cpuinfo_open(name);
+  if (cpuinfo != VFS_EMPTY_HANDLE)
+    return cpuinfo;
   int tty = tty_path_id(name);
   if (tty >= 0)
     return VFS_DEV_TTY_BASE - tty;
   return VFS_EMPTY_HANDLE;
+}
+
+static int cpuinfo_handle_id(int handle) {
+  if (handle <= VFS_DEV_CPUINFO_BASE &&
+      handle > VFS_DEV_CPUINFO_BASE - CPUINFO_OPEN_FILES) {
+    return VFS_DEV_CPUINFO_BASE - handle;
+  }
+  return -1;
 }
 
 static int tty_handle_id(int handle) {
@@ -78,6 +117,26 @@ static int tty_handle_id(int handle) {
     return VFS_DEV_TTY_BASE - handle;
   }
   return -1;
+}
+
+static int cpuinfo_read(int handle, size_t size, void *dst) {
+  int id = cpuinfo_handle_id(handle);
+  if (id < 0 || !cpuinfo_files[id].used || !dst)
+    return -1;
+  if (size == 0)
+    return 0;
+
+  const char *text = cpuid_cpuinfo_text();
+  size_t len = cpuid_cpuinfo_size();
+  size_t offset = cpuinfo_files[id].offset;
+  if (offset >= len)
+    return 0;
+
+  size_t remaining = len - offset;
+  size_t take = size < remaining ? size : remaining;
+  memcpy(dst, text + offset, take);
+  cpuinfo_files[id].offset += take;
+  return (int)take;
 }
 
 static int device_read(int handle, size_t size, void *dst) {
@@ -92,7 +151,45 @@ static int device_read(int handle, size_t size, void *dst) {
   int tty = tty_handle_id(handle);
   if (tty >= 0)
     return tty_read(tty, size, dst);
+  int cpuinfo = cpuinfo_handle_id(handle);
+  if (cpuinfo >= 0)
+    return cpuinfo_read(handle, size, dst);
   return -1;
+}
+
+static int cpuinfo_close(int handle) {
+  int id = cpuinfo_handle_id(handle);
+  if (id < 0 || !cpuinfo_files[id].used)
+    return -1;
+
+  cpuinfo_files[id].refs--;
+  if (cpuinfo_files[id].refs <= 0) {
+    cpuinfo_files[id].used = 0;
+    cpuinfo_files[id].offset = 0;
+  }
+
+  return 0;
+}
+
+static int cpuinfo_dup(int handle) {
+  int id = cpuinfo_handle_id(handle);
+  if (id < 0 || !cpuinfo_files[id].used)
+    return -1;
+
+  cpuinfo_files[id].refs++;
+  return 0;
+}
+
+static int device_close(int handle) {
+  if (cpuinfo_handle_id(handle) >= 0)
+    return cpuinfo_close(handle);
+  return 0;
+}
+
+static int device_dup(int handle) {
+  if (cpuinfo_handle_id(handle) >= 0)
+    return cpuinfo_dup(handle);
+  return 0;
 }
 
 static int device_write(int handle, const void *src, size_t size) {
@@ -121,7 +218,7 @@ int file_open(const char *path) {
 
 int file_close(int handle) {
   if (handle < VFS_EMPTY_HANDLE)
-    return 0;
+    return device_close(handle);
 
   if (!current_driver || !current_driver->close_file) {
     ERROR("VFS", "No valid VFS driver registered");
@@ -229,8 +326,12 @@ int vfs_dup2(int oldfd, int newfd) {
     vfs_close(newfd);
 
   table->handle[newfd] = table->handle[oldfd];
-  if (table->handle[newfd] >= 0 && current_driver && current_driver->dup_file)
+  if (table->handle[newfd] < VFS_EMPTY_HANDLE) {
+    device_dup(table->handle[newfd]);
+  } else if (table->handle[newfd] >= 0 && current_driver &&
+             current_driver->dup_file) {
     current_driver->dup_file(table->handle[newfd]);
+  }
 
   int tty = tty_handle_id(table->handle[newfd]);
   if (newfd == 0 && tty >= 0)
@@ -262,7 +363,10 @@ void vfs_fork_fds(fd_table_t *child) {
 
   for (int i = 0; i < MAX_FDS_PER_PROCESS; i++) {
     child->handle[i] = parent->handle[i];
-    if (child->handle[i] >= 0 && current_driver && current_driver->dup_file) {
+    if (child->handle[i] < VFS_EMPTY_HANDLE) {
+      device_dup(child->handle[i]);
+    } else if (child->handle[i] >= 0 && current_driver &&
+               current_driver->dup_file) {
       current_driver->dup_file(child->handle[i]);
     }
   }
@@ -277,6 +381,7 @@ void vfs_exit_fds(fd_table_t *table) {
       current_driver->close_file(table->handle[i]);
       table->handle[i] = VFS_EMPTY_HANDLE;
     } else if (table->handle[i] < VFS_EMPTY_HANDLE) {
+      device_close(table->handle[i]);
       table->handle[i] = VFS_EMPTY_HANDLE;
     }
   }
