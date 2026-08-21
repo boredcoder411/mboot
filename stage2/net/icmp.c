@@ -6,22 +6,6 @@
 #include "net/socket.h"
 #include "utils.h"
 
-static void icmp_dump_bytes(const uint8_t *data, uint16_t len) {
-  INFO("ICMP", "Raw bytes (%u bytes):", len);
-
-  for (uint16_t i = 0; i < len; ++i) {
-    if ((i % 16) == 0) {
-      serial_printf("%03x: ", i);
-    }
-
-    serial_printf("%02x ", data[i]);
-
-    if ((i % 16) == 15 || i == (uint16_t)(len - 1)) {
-      write_serial('\n');
-    }
-  }
-}
-
 void icmp_process_packet(uint8_t *frame, uint16_t frame_len, ipv4_hdr *ipv4,
                          uint8_t *icmp_data, uint16_t icmp_len) {
   if (icmp_len < sizeof(icmp_echo_hdr))
@@ -34,7 +18,10 @@ void icmp_process_packet(uint8_t *frame, uint16_t frame_len, ipv4_hdr *ipv4,
          ipv4->src_ip[0], ipv4->src_ip[1], ipv4->src_ip[2], ipv4->src_ip[3],
          ntohs(icmp->identifier), ntohs(icmp->sequence),
          icmp_len - sizeof(icmp_echo_hdr));
-    icmp_dump_bytes(frame, frame_len);
+    // skloppy deref cause unused
+    (void)frame;
+    (void)frame_len;
+    (void)ipv4;
     socket_icmp_rx(ipv4->src_ip, icmp_data, icmp_len);
   }
 }
