@@ -1,7 +1,7 @@
 #pragma once
 
-#include <stddef.h>
 #include <stdarg.h>
+#include <stddef.h>
 
 #define SEEK_SET 0
 #define SEEK_CUR 1

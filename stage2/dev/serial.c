@@ -31,9 +31,7 @@ static inline int is_transmit_empty(void) {
   return inb(SERIAL_PORT + 5) & 0x20;
 }
 
-static inline int is_data_ready(void) {
-  return inb(SERIAL_PORT + 5) & 1;
-}
+static inline int is_data_ready(void) { return inb(SERIAL_PORT + 5) & 1; }
 
 void write_serial(char a) {
   while (!is_transmit_empty())
@@ -47,9 +45,7 @@ char read_serial(void) {
   return inb(SERIAL_PORT);
 }
 
-int serial_has_data(void) {
-  return is_data_ready();
-}
+int serial_has_data(void) { return is_data_ready(); }
 
 void serial_print(const char *str) {
   while (*str)

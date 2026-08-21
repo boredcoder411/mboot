@@ -106,7 +106,7 @@ void syscall_dispatch(registers_t *r) {
     int fd = (int)r->ebx;
     int handle = vfs_fd_handle(fd);
     r->eax = socket_sendto(handle, (const void *)r->ecx, r->edx, 0,
-                            (const struct sockaddr *)r->esi, (socklen_t)r->edi);
+                           (const struct sockaddr *)r->esi, (socklen_t)r->edi);
     INFO("SYSCALL", "sendto(%d, len=%u) = %d", fd, r->edx, r->eax);
     break;
   }

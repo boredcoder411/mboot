@@ -31,4 +31,5 @@ unsigned long int strtoul(const char *nptr, char **endptr, int base);
 int remove(const char *path);
 int rename(const char *oldPath, const char *newPath);
 
-void qsort(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *));
+void qsort(void *base, size_t nmemb, size_t size,
+           int (*compar)(const void *, const void *));

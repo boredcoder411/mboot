@@ -39,8 +39,7 @@ static inline void write_cr4(uint32_t value) {
 
 void paging_init(void) {
   uintptr_t raw_page_directory = (uintptr_t)kmalloc(PAGE_SIZE * 2);
-  page_directory =
-      (uint32_t *)align_up_uintptr(raw_page_directory, PAGE_SIZE);
+  page_directory = (uint32_t *)align_up_uintptr(raw_page_directory, PAGE_SIZE);
 
   for (uint32_t i = 0; i < PAGE_DIRECTORY_ENTRIES; ++i) {
     uint32_t phys = i * FOUR_MIB;

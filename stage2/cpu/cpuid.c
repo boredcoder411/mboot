@@ -199,8 +199,8 @@ void cpuid_init(void) {
     cpu.type = (a >> 12) & 0x3;
     cpu.ext_model = (a >> 16) & 0xF;
     cpu.ext_family = (a >> 20) & 0xFF;
-    cpu.family = base_family == 0xF ? base_family + cpu.ext_family
-                                    : base_family;
+    cpu.family =
+        base_family == 0xF ? base_family + cpu.ext_family : base_family;
     cpu.model = (base_family == 0x6 || base_family == 0xF)
                     ? base_model + (cpu.ext_model << 4)
                     : base_model;

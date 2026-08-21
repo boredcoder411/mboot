@@ -159,7 +159,7 @@ file_transforms: | $(BUILD)
 	cp user/lua/lua $(BUILD)/lua.elf
 
 format:
-	@find . -type f \( -name "*.c" -o -name "*.h" \) -exec clang-format -i {} +
+	@find . -path "./user/lua" -prune -o -type f \( -name "*.c" -o -name "*.h" \) -exec clang-format -i {} +
 
 clean:
 	rm -rf $(BUILD)

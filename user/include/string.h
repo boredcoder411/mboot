@@ -29,4 +29,3 @@ int strncmp(const char *s1, const char *s2, size_t n);
 int strncasecmp(const char *s1, const char *s2, size_t n);
 int strcoll(const char *s1, const char *s2);
 char *strerror(int errnum);
-

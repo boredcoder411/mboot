@@ -25,8 +25,8 @@ int main(int argc, char **argv) {
   for (;;) {
     struct sockaddr_in peer;
     socklen_t peer_len = sizeof(peer);
-    int n = recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr *)&peer,
-                     &peer_len);
+    int n =
+        recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr *)&peer, &peer_len);
     if (n > 0)
       sendto(fd, buf, (size_t)n, 0, (struct sockaddr *)&peer, peer_len);
   }
