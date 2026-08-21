@@ -59,6 +59,10 @@ int close(int fd) {
 }
 
 int execv(const char *pathname, char *const argv[]) {
+  return execv_tty(pathname, argv, -1);
+}
+
+int execv_tty(const char *pathname, char *const argv[], int tty) {
   int argc = 0;
   while (argv && argv[argc])
     argc++;
@@ -66,7 +70,7 @@ int execv(const char *pathname, char *const argv[]) {
   int ret;
   asm volatile("int $0x80"
                : "=a"(ret)
-               : "0"(__NR_exec), "b"(pathname), "c"(argv), "d"(argc));
+               : "0"(__NR_exec), "b"(pathname), "c"(argv), "d"(argc), "S"(tty));
   return ret;
 }
 

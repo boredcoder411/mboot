@@ -45,13 +45,6 @@ fd_table_t *scheduler_current_fds(void) {
 
 int scheduler_current_tty(void) { return current_task ? current_task->tty : 0; }
 
-int scheduler_set_current_tty(int tty) {
-  if (!current_task)
-    return -1;
-  current_task->tty = tty;
-  return 0;
-}
-
 void scheduler_init(void) {
   current_task = (tcb_t *)kmalloc(sizeof(tcb_t));
   current_task->esp = 0;
@@ -104,18 +97,20 @@ int create_task(void (*func)(void)) {
 }
 
 int create_user_task(uint32_t entry, uint32_t code_base, uint32_t code_size,
-                     int argc, char **argv) {
+                     int argc, char **argv, int tty) {
   user_segment_t segment = {
       .vaddr = code_base,
       .filesz = code_size,
       .memsz = code_size,
       .data = (const void *)code_base,
   };
-  return create_user_task_from_segments(entry, &segment, 1, argc, argv);
+  return create_user_task_from_segments(entry, &segment, 1, argc, argv, tty);
 }
 
-int create_user_task_from_segments(uint32_t entry, const user_segment_t *segments,
-                                   int segment_count, int argc, char **argv) {
+int create_user_task_from_segments(uint32_t entry,
+                                   const user_segment_t *segments,
+                                   int segment_count, int argc, char **argv,
+                                   int tty) {
   if (argc < 0)
     return -1;
   if (argc > MAX_TASK_ARGS)
@@ -167,8 +162,7 @@ int create_user_task_from_segments(uint32_t entry, const user_segment_t *segment
   }
 
   for (uint32_t addr = (uint32_t)stack & 0xFFFFF000U;
-       addr < (uint32_t)stack + TASK_STACK_SIZE;
-       addr += PAGE_SIZE) {
+       addr < (uint32_t)stack + TASK_STACK_SIZE; addr += PAGE_SIZE) {
     paging_map_page(dir, addr, addr, PAGE_USER | PAGE_WRITABLE);
   }
 
@@ -199,14 +193,20 @@ int create_user_task_from_segments(uint32_t entry, const user_segment_t *segment
   tcb->pid = next_pid++;
   tcb->stack_base = (uint32_t)stack;
   tcb->cr3 = dir;
-  tcb->tty = scheduler_current_tty();
   task_init_fds(tcb);
+  if (tty >= 0) {
+    tcb->tty = tty;
+    vfs_bind_tty(&tcb->fds, tty);
+  } else {
+    tcb->tty = scheduler_current_tty();
+  }
 
   tcb->next = idle_task->next;
   idle_task->next = tcb;
 
-  INFO("SCHED", "Created user task PID %u @ 0x%X (stack 0x%X, entry 0x%X, "
-                "CR3 0x%X, image 0x%X+0x%X)",
+  INFO("SCHED",
+       "Created user task PID %u @ 0x%X (stack 0x%X, entry 0x%X, "
+       "CR3 0x%X, image 0x%X+0x%X)",
        tcb->pid, (uint32_t)tcb, tcb->stack_base, entry, tcb->cr3, image_base,
        image_end - image_base);
 

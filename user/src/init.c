@@ -1,25 +1,16 @@
 #include "libc.h"
 
-static int reopen_stdio(const char *tty) {
-  int fd = open(tty, 2);
-  if (fd < 0)
-    return -1;
+#define TTY1 0
+#define TTY2 1
+#define TTY3 2
+#define TTY4 3
 
-  dup2(fd, 0);
-  dup2(fd, 1);
-  dup2(fd, 2);
-  if (fd > 2)
-    close(fd);
-  return 0;
-}
-
-static void spawn_background(const char *path, const char *tty, char **argv) {
+static void spawn_background(const char *path, int tty, char **argv) {
   int pid = fork();
   if (pid != 0)
     return;
 
-  reopen_stdio(tty);
-  int child = execv(path, argv);
+  int child = execv_tty(path, argv, tty);
   exit(child >= 0 ? 0 : 1);
 }
 
@@ -30,18 +21,16 @@ int main(int argc, char **argv) {
   printf("init: booting\n");
 
   char *lua_argv[] = {"/lua.elf", NULL};
-  printf("init: launching Lua interpreter\n");
-  execv("/lua.elf", lua_argv);
-
-  reopen_stdio("/dev/tty4");
+  printf("init: launching Lua interpreter on tty4\n");
+  execv_tty("/lua.elf", lua_argv, TTY4);
 
   char *server_argv[] = {"/udp_lua.elf", NULL};
-  printf("init: launching UDP Lua server\n");
-  spawn_background("/udp_lua.elf", "/dev/tty2", server_argv);
+  printf("init: launching UDP Lua server on tty2\n");
+  spawn_background("/udp_lua.elf", TTY2, server_argv);
 
   char *ping_argv[] = {"/ping.elf", "142.251.142.14", NULL};
-  printf("init: launching ping\n");
-  spawn_background("/ping.elf", "/dev/tty3", ping_argv);
+  printf("init: launching ping on tty3\n");
+  spawn_background("/ping.elf", TTY3, ping_argv);
 
   for (;;) {
     for (volatile int i = 0; i < 100000; ++i)

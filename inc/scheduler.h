@@ -33,9 +33,11 @@ typedef struct {
 
 int create_task(void (*func)(void));
 int create_user_task(uint32_t entry, uint32_t code_base, uint32_t code_size,
-                     int argc, char **argv);
-int create_user_task_from_segments(uint32_t entry, const user_segment_t *segments,
-                                   int segment_count, int argc, char **argv);
+                     int argc, char **argv, int tty);
+int create_user_task_from_segments(uint32_t entry,
+                                   const user_segment_t *segments,
+                                   int segment_count, int argc, char **argv,
+                                   int tty);
 int fork_current(registers_t *r);
 void scheduler_init();
 void scheduler_exit_current(int exit_code);
@@ -43,4 +45,3 @@ void task_exit() __attribute__((noreturn));
 uint32_t scheduler_tick(registers_t *r);
 fd_table_t *scheduler_current_fds(void);
 int scheduler_current_tty(void);
-int scheduler_set_current_tty(int tty);

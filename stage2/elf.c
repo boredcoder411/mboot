@@ -29,7 +29,7 @@ int load_elf(void *file_data) {
   return 0;
 }
 
-int spawn_elf(const char *path, int argc, char **argv) {
+int spawn_elf(const char *path, int argc, char **argv, int tty) {
   int file = file_open(path);
   if (file < 0) {
     INFO("ELF", "error: could not find %s", path);
@@ -71,7 +71,7 @@ int spawn_elf(const char *path, int argc, char **argv) {
   }
 
   return create_user_task_from_segments(eh->entry, segments, segment_count,
-                                        argc, argv);
+                                        argc, argv, tty);
 }
 
 void jump_to_entry(void *elf_data) {

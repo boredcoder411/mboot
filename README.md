@@ -28,9 +28,11 @@ qemu-system-x86_64 -m 4G -drive file=image.img -serial stdio \
 
 ## UDP demo
 The kernel brings up the network interface at boot (`stage2/net/net.c`): guest IP
-`10.0.2.15/24` with gateway `10.0.2.2`. The init system (`user/src/init.c`) starts a
-UDP echo service on guest port `7` and a `ping` (`user/src/ping.c`) that uses a raw
-ICMP socket (`socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)`).
+`10.0.2.15/24` with gateway `10.0.2.2`. The init system (`user/src/init.c`) assigns each
+process a tty at spawn: init stays on tty1, the Lua interpreter runs on tty4, the UDP
+echo service on tty2, and `ping` (`user/src/ping.c`, a raw ICMP socket via
+`socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)`) on tty3. Processes cannot rebind their stdio
+to a different tty — the kernel rejects `dup2` of another tty onto stdin/stdout/stderr.
 
 Run QEMU with host UDP forwarding:
 ```sh

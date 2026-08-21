@@ -65,7 +65,7 @@ void loader_start(void) {
   int argc = 1;
 
   INFO("MAIN", "Starting init...");
-  if (spawn_elf("/init.elf", argc, argv) < 0) {
+  if (spawn_elf("/init.elf", argc, argv, -1) < 0) {
     while (1) {
       asm volatile("hlt");
     }

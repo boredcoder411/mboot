@@ -1,7 +1,6 @@
 #include "cpu/interrupts/idt.h"
 #include "dev/keyboard.h"
 #include "dev/serial.h"
-#include "dev/tty.h"
 #include "dev/vga.h"
 #include "elf.h"
 #include "io.h"
@@ -68,23 +67,16 @@ void syscall_dispatch(registers_t *r) {
     const char *pathname = (const char *)r->ebx;
     char **argv = (char **)r->ecx;
     int argc = (int)r->edx;
+    int tty = (int)r->esi;
     char *default_argv[] = {(char *)pathname, NULL};
     if (!argv || argc <= 0) {
       argv = default_argv;
       argc = 1;
     }
-    int pid = spawn_elf(pathname, argc, argv);
-    INFO("SYSCALL", "exec(\"%s\", argc=%d) = %d", pathname, argc, pid);
+    int pid = spawn_elf(pathname, argc, argv, tty);
+    INFO("SYSCALL", "exec(\"%s\", argc=%d, tty=%d) = %d", pathname, argc, tty,
+         pid);
     r->eax = pid;
-    break;
-  }
-  case 12: { // sys_set_tty
-    int tty = (int)r->ebx;
-    if (tty_valid(tty)) {
-      r->eax = scheduler_set_current_tty(tty);
-    } else {
-      r->eax = -1;
-    }
     break;
   }
   case 63: { // sys_dup2
@@ -139,6 +131,7 @@ void idt_set_gate(uint8_t num, uint32_t base, uint16_t sel, uint8_t flags) {
   idt[num].base_low = base & 0xFFFF;
   idt[num].sel = sel;
   idt[num].always0 = 0;
+  idt[num].flags = flags;
   idt[num].base_high = (base >> 16) & 0xFFFF;
 }
 

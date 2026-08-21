@@ -21,10 +21,13 @@ int file_write(int handle, const void *src, size_t size);
 
 /* per-process fd level */
 int vfs_open(const char *path);
+int vfs_attach_handle(int handle);
 int vfs_read(int fd, size_t size, void *dst);
 int vfs_write(int fd, const void *src, size_t size);
 int vfs_close(int fd);
 int vfs_dup2(int oldfd, int newfd);
+int vfs_fd_handle(int fd);
 void vfs_init_fds(fd_table_t *table, int tty);
+void vfs_bind_tty(fd_table_t *table, int tty);
 void vfs_fork_fds(fd_table_t *child);
 void vfs_exit_fds(fd_table_t *table);
