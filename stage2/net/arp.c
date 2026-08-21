@@ -130,3 +130,28 @@ int arp_try_get_mac(uint8_t target_ip[4], uint8_t out_mac[6]) {
   memcpy(out_mac, arp_cached_mac, 6);
   return 1;
 }
+
+int arp_resolve(const uint8_t target_ip[4], uint8_t out_mac[6]) {
+  if (arp_try_get_mac((uint8_t *)target_ip, out_mac))
+    return 1;
+
+  uint8_t src_ip[4];
+  if (!ipv4_get_address(src_ip))
+    return 0;
+
+  arp_send_request(src_ip, (uint8_t *)target_ip);
+
+  for (int i = 0; i < 8; ++i) {
+    for (uint32_t j = 0; j < 1000000; ++j) {
+      if (arp_try_get_mac((uint8_t *)target_ip, out_mac))
+        return 1;
+      e1k_drain_rx();
+      asm volatile("pause");
+    }
+    asm volatile("hlt");
+  }
+
+  INFO("ARP", "Failed to resolve %d.%d.%d.%d", target_ip[0], target_ip[1],
+       target_ip[2], target_ip[3]);
+  return 0;
+}

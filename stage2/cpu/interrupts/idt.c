@@ -2,15 +2,12 @@
 #include "dev/keyboard.h"
 #include "dev/serial.h"
 #include "dev/tty.h"
+#include "dev/vga.h"
 #include "elf.h"
 #include "io.h"
-#include "net/arp.h"
-#include "net/icmp.h"
-#include "net/ipv4.h"
-#include "net/udp.h"
+#include "net/socket.h"
 #include "scheduler.h"
 #include "vfs.h"
-#include "dev/vga.h"
 
 extern void syscall_handler();
 
@@ -28,7 +25,7 @@ void syscall_dispatch(registers_t *r) {
     INFO("SYSCALL", "fork() = %d", pid);
     break;
   }
-  case 3: {            // sys_read
+  case 3: { // sys_read
     uint32_t fd = r->ebx;
     INFO("SYSCALL", "read(fd=%u, count=%u)", fd, r->edx);
     r->eax = vfs_read(fd, r->edx, (void *)r->ecx);
@@ -97,61 +94,36 @@ void syscall_dispatch(registers_t *r) {
     INFO("SYSCALL", "dup2(%d, %d) = %d", oldfd, newfd, r->eax);
     break;
   }
-  case 200: { // sys_net_init
-    const uint8_t *src_ip = (const uint8_t *)r->ebx;
-    ipv4_set_address(src_ip);
-    udp_init();
-    INFO("SYSCALL", "net_init(%d.%d.%d.%d)", src_ip[0], src_ip[1], src_ip[2],
-         src_ip[3]);
-    r->eax = 0;
+  case 300: { // sys_socket
+    int handle = socket_create((int)r->ebx, (int)r->ecx, (int)r->edx);
+    r->eax = socket_handle_valid(handle) ? vfs_attach_handle(handle) : -1;
+    if ((int)r->eax < 0 && socket_handle_valid(handle))
+      socket_close(handle);
+    INFO("SYSCALL", "socket(%d, %d, %d) = %d", r->ebx, r->ecx, r->edx, r->eax);
     break;
   }
-  case 201: { // sys_arp_request
-    const uint8_t *src_ip = (const uint8_t *)r->ebx;
-    const uint8_t *target_ip = (const uint8_t *)r->ecx;
-    arp_send_request((uint8_t *)src_ip, (uint8_t *)target_ip);
-    r->eax = 0;
+  case 301: { // sys_bind
+    int fd = (int)r->ebx;
+    int handle = vfs_fd_handle(fd);
+    r->eax =
+        socket_bind(handle, (const struct sockaddr *)r->ecx, (socklen_t)r->edx);
+    INFO("SYSCALL", "bind(%d) = %d", fd, r->eax);
     break;
   }
-  case 202: { // sys_arp_lookup
-    const uint8_t *ip = (const uint8_t *)r->ebx;
-    uint8_t *mac_out = (uint8_t *)r->ecx;
-    r->eax = arp_try_get_mac((uint8_t *)ip, mac_out) ? 0 : -1;
+  case 302: { // sys_sendto
+    int fd = (int)r->ebx;
+    int handle = vfs_fd_handle(fd);
+    r->eax = socket_sendto(handle, (const void *)r->ecx, r->edx, 0,
+                            (const struct sockaddr *)r->esi, (socklen_t)r->edi);
+    INFO("SYSCALL", "sendto(%d, len=%u) = %d", fd, r->edx, r->eax);
     break;
   }
-  case 203: { // sys_icmp_echo
-    const uint8_t *src_ip = (const uint8_t *)r->ebx;
-    const uint8_t *dst_ip = (const uint8_t *)r->ecx;
-    const uint8_t *next_hop_mac = (const uint8_t *)r->edx;
-    uint16_t identifier = (uint16_t)r->esi;
-    uint16_t sequence = (uint16_t)r->edi;
-    r->eax = icmp_send_echo((uint8_t *)src_ip, (uint8_t *)dst_ip,
-                            (uint8_t *)next_hop_mac, identifier, sequence);
-    break;
-  }
-  case 204: { // sys_udp_server_bind
-    r->eax = udp_server_bind((uint16_t)r->ebx);
-    break;
-  }
-  case 205: { // sys_udp_server_recv
-    uint16_t port = (uint16_t)r->ebx;
-    uint8_t *src_ip_out = (uint8_t *)r->ecx;
-    uint16_t *src_port_out = (uint16_t *)r->edx;
-    uint8_t *buf = (uint8_t *)r->esi;
-    uint16_t max_len = (uint16_t)r->edi;
-    uint16_t payload_len = 0;
-    int ret =
-        udp_server_recv(port, src_ip_out, src_port_out, buf, max_len, &payload_len);
-    r->eax = ret < 0 ? -1 : (int)payload_len;
-    break;
-  }
-  case 206: { // sys_udp_send_local
-    uint16_t src_port = (uint16_t)r->ebx;
-    const uint8_t *dst_ip = (const uint8_t *)r->ecx;
-    uint16_t dst_port = (uint16_t)r->edx;
-    const uint8_t *payload = (const uint8_t *)r->esi;
-    uint16_t payload_len = (uint16_t)r->edi;
-    r->eax = udp_send_local(src_port, dst_ip, dst_port, payload, payload_len);
+  case 303: { // sys_recvfrom
+    int fd = (int)r->ebx;
+    int handle = vfs_fd_handle(fd);
+    r->eax = socket_recvfrom(handle, (void *)r->ecx, r->edx, 0,
+                             (struct sockaddr *)r->esi, (socklen_t *)r->edi);
+    INFO("SYSCALL", "recvfrom(%d, len=%u) = %d", fd, r->edx, r->eax);
     break;
   }
   default:
@@ -167,7 +139,6 @@ void idt_set_gate(uint8_t num, uint32_t base, uint16_t sel, uint8_t flags) {
   idt[num].base_low = base & 0xFFFF;
   idt[num].sel = sel;
   idt[num].always0 = 0;
-  idt[num].flags = flags;
   idt[num].base_high = (base >> 16) & 0xFFFF;
 }
 

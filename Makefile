@@ -28,10 +28,10 @@ CFLAGS += -DALLOC_DBG
 $(BUILD):
 	mkdir -p $(BUILD)
 
-stage1: stage1/boot.asm | $(BUILD)
+stage1: stage1/boot.asm kernel.bin | $(BUILD)
 	nasm -f bin stage1/boot.asm -o boot.bin
 
-stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/io.c stage2/dev/disk.c stage2/dev/serial.c stage2/fat16.c stage2/cpu/cpuid.c stage2/cpu/interrupts/idt.c stage2/cpu/interrupts/isr.asm stage2/cpu/interrupts/isr.c stage2/cpu/interrupts/irq.asm stage2/cpu/interrupts/irq.c stage2/cpu/pic/pic.c stage2/cpu/pit/pit.c stage2/dev/keyboard.c stage2/dev/tty.c stage2/mem.c stage2/paging.c stage2/dev/rtc.c stage2/dev/pci.c stage2/dev/pci_devices.c stage2/dev/e1k.c stage2/net/eth.c stage2/net/arp.c stage2/net/ipv4.c stage2/net/icmp.c stage2/net/udp.c stage2/vfs.c stage2/elf.c stage2/cpu/gdt.c stage2/scheduler.c stage2/dev/vga.c | $(BUILD)
+stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/io.c stage2/dev/disk.c stage2/dev/serial.c stage2/fat16.c stage2/cpu/cpuid.c stage2/cpu/interrupts/idt.c stage2/cpu/interrupts/isr.asm stage2/cpu/interrupts/isr.c stage2/cpu/interrupts/irq.asm stage2/cpu/interrupts/irq.c stage2/cpu/pic/pic.c stage2/cpu/pit/pit.c stage2/dev/keyboard.c stage2/dev/tty.c stage2/mem.c stage2/paging.c stage2/dev/rtc.c stage2/dev/pci.c stage2/dev/pci_devices.c stage2/dev/e1k.c stage2/net/eth.c stage2/net/arp.c stage2/net/ipv4.c stage2/net/icmp.c stage2/net/udp.c stage2/net/socket.c stage2/net/net.c stage2/vfs.c stage2/elf.c stage2/cpu/gdt.c stage2/scheduler.c stage2/dev/vga.c | $(BUILD)
 	nasm -f elf stage2/start_loader.asm -o $(BUILD)/start_loader.o
 	nasm -f elf stage2/cpu/interrupts/idt.asm -o $(BUILD)/idt_s.o
 	nasm -f elf stage2/cpu/interrupts/isr.asm -o $(BUILD)/isr_s.o
@@ -63,6 +63,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/io.c stage
 	$(CC) $(CFLAGS) stage2/net/ipv4.c -o $(BUILD)/ipv4.o
 	$(CC) $(CFLAGS) stage2/net/icmp.c -o $(BUILD)/icmp.o
 	$(CC) $(CFLAGS) stage2/net/udp.c -o $(BUILD)/udp.o
+	$(CC) $(CFLAGS) stage2/net/socket.c -o $(BUILD)/socket.o
 	$(CC) $(CFLAGS) stage2/vfs.c -o $(BUILD)/vfs.o
 	$(CC) $(CFLAGS) stage2/elf.c -o $(BUILD)/elf.o
 	$(CC) $(CFLAGS) stage2/cpu/gdt.c -o $(BUILD)/gdt.o
@@ -99,6 +100,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/io.c stage
 		$(BUILD)/ipv4.o \
 		$(BUILD)/icmp.o \
 		$(BUILD)/udp.o \
+		$(BUILD)/socket.o \
 		$(BUILD)/vfs.o \
 		$(BUILD)/elf.o \
 		$(BUILD)/elf_trampoline.o \
@@ -111,7 +113,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/io.c stage
 	$(OBJCOPY) --strip-all kernel.elf
 
 image: file_transforms
-	@./image.sh test_files/hi.txt build/libc.elf build/test.elf build/lua.elf build/init.elf build/demo1.elf build/demo2.elf build/fork_test.elf $(wildcard test_files/*.lua)
+	@./image.sh test_files/hi.txt build/libc.elf build/test.elf build/lua.elf build/init.elf build/udp_lua.elf build/socket_echo.elf build/demo1.elf build/demo2.elf build/fork_test.elf build/ping.elf $(wildcard test_files/*.lua)
 
 file_transforms: | $(BUILD)
 	@echo "Building libc as separate object..."
@@ -120,11 +122,17 @@ file_transforms: | $(BUILD)
 	$(CC) $(USER_CFLAGS) -c test_files/test.c -o $(BUILD)/test.o
 	@echo "Building fork test program..."
 	$(CC) $(USER_CFLAGS) -c test_files/fork_test.c -o $(BUILD)/fork_test.o
+	@echo "Building socket echo test..."
+	$(CC) $(USER_CFLAGS) -c test_files/socket_echo.c -o $(BUILD)/socket_echo.o
 	@echo "Building demo programs..."
 	$(CC) $(USER_CFLAGS) -c test_files/demo_task1.c -o $(BUILD)/demo1.o
 	$(CC) $(USER_CFLAGS) -c test_files/demo_task2.c -o $(BUILD)/demo2.o
 	@echo "Building init program..."
 	$(CC) $(USER_CFLAGS) -c user/src/init.c -o $(BUILD)/init.o
+	@echo "Building UDP Lua server..."
+	$(CC) $(USER_CFLAGS) -c user/src/udp_echo.c -o $(BUILD)/udp_lua.o
+	@echo "Building ping..."
+	$(CC) $(USER_CFLAGS) -c user/src/ping.c -o $(BUILD)/ping.o
 	@echo "Building entry points..."
 	nasm -f elf user/src/crt0.s -o $(BUILD)/crt0.o
 	@echo "Creating libc.elf..."
@@ -133,11 +141,17 @@ file_transforms: | $(BUILD)
 	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/test.o -Ttext 0x50000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/test.elf
 	@echo "Creating fork_test.elf..."
 	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/fork_test.o -Ttext 0x53000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/fork_test.elf
+	@echo "Creating socket echo test..."
+	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/socket_echo.o -Ttext 0x55000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/socket_echo.elf
 	@echo "Creating demo ELFs..."
 	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/demo1.o -Ttext 0x51000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/demo1.elf
 	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/demo2.o -Ttext 0x52000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/demo2.elf
 	@echo "Creating init.elf..."
 	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/init.o -Ttext 0x48000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/init.elf
+	@echo "Creating UDP Lua server..."
+	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/udp_lua.o -Ttext 0x54000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/udp_lua.elf
+	@echo "Creating ping..."
+	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/ping.o -Ttext 0x56000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/ping.elf
 	@echo "Building Lua 5.5.0..."
 	$(MAKE) -C user/lua -j4
 	cp user/lua/lua $(BUILD)/lua.elf

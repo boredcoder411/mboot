@@ -9,12 +9,24 @@
 
 static uint8_t ipv4_local_ip[4];
 static int ipv4_local_ip_valid = 0;
+static uint8_t ipv4_netmask[4] = {255, 255, 255, 255};
+static uint8_t ipv4_gateway[4];
+static int ipv4_gateway_valid = 0;
 
 void ipv4_set_address(const uint8_t ip[4]) {
   memcpy(ipv4_local_ip, ip, 4);
   ipv4_local_ip_valid = 1;
 
   INFO("IPV4", "Local address set to %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+}
+
+void ipv4_set_netmask(const uint8_t mask[4]) { memcpy(ipv4_netmask, mask, 4); }
+
+void ipv4_set_gateway(const uint8_t gw[4]) {
+  memcpy(ipv4_gateway, gw, 4);
+  ipv4_gateway_valid = 1;
+
+  INFO("IPV4", "Gateway set to %d.%d.%d.%d", gw[0], gw[1], gw[2], gw[3]);
 }
 
 int ipv4_get_address(uint8_t out_ip[4]) {
@@ -25,12 +37,32 @@ int ipv4_get_address(uint8_t out_ip[4]) {
   return 1;
 }
 
+int ipv4_get_gateway(uint8_t out_gw[4]) {
+  if (!ipv4_gateway_valid)
+    return 0;
+
+  memcpy(out_gw, ipv4_gateway, 4);
+  return 1;
+}
+
 int ipv4_is_local_address(const uint8_t ip[4]) {
   if (!ipv4_local_ip_valid)
     return 0;
 
   for (int i = 0; i < 4; ++i) {
     if (ipv4_local_ip[i] != ip[i])
+      return 0;
+  }
+
+  return 1;
+}
+
+int ipv4_on_local_network(const uint8_t ip[4]) {
+  if (!ipv4_local_ip_valid)
+    return 0;
+
+  for (int i = 0; i < 4; ++i) {
+    if ((ipv4_local_ip[i] & ipv4_netmask[i]) != (ip[i] & ipv4_netmask[i]))
       return 0;
   }
 

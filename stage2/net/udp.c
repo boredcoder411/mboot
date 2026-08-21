@@ -195,18 +195,31 @@ int udp_send(const uint8_t src_ip[4], const uint8_t dst_ip[4],
              const uint8_t next_hop_mac[6], uint16_t src_port,
              uint16_t dst_port, const void *payload, uint16_t payload_len) {
   uint8_t *resolved_next_hop = NULL;
-  uint8_t *dst_lookup = NULL;
   if (next_hop_mac == NULL) {
     resolved_next_hop = (uint8_t *)kmalloc(6);
-    dst_lookup = (uint8_t *)kmalloc(4);
-    memcpy(dst_lookup, dst_ip, 4);
-    if (!arp_try_get_mac(dst_lookup, resolved_next_hop)) {
-      INFO("UDP", "No ARP entry for %d.%d.%d.%d", dst_ip[0], dst_ip[1],
-           dst_ip[2], dst_ip[3]);
-      kfree(dst_lookup);
+
+    uint8_t gw[4];
+    if (ipv4_on_local_network(dst_ip)) {
+      if (!arp_resolve(dst_ip, resolved_next_hop)) {
+        INFO("UDP", "No ARP entry for %d.%d.%d.%d", dst_ip[0], dst_ip[1],
+             dst_ip[2], dst_ip[3]);
+        kfree(resolved_next_hop);
+        return -1;
+      }
+    } else if (ipv4_get_gateway(gw)) {
+      if (!arp_resolve(gw, resolved_next_hop)) {
+        INFO("UDP", "No ARP entry for gateway %d.%d.%d.%d", gw[0], gw[1], gw[2],
+             gw[3]);
+        kfree(resolved_next_hop);
+        return -1;
+      }
+    } else {
+      INFO("UDP", "No route to %d.%d.%d.%d", dst_ip[0], dst_ip[1], dst_ip[2],
+           dst_ip[3]);
       kfree(resolved_next_hop);
       return -1;
     }
+
     next_hop_mac = resolved_next_hop;
   }
 
@@ -226,11 +239,9 @@ int udp_send(const uint8_t src_ip[4], const uint8_t dst_ip[4],
   uint16_t checksum = udp_checksum(src_ip, dst_ip, segment, segment_len);
   udp->dgram_cksum = htons(checksum == 0 ? 0xFFFF : checksum);
 
-  int result =
-      ipv4_send_packet(src_ip, dst_ip, next_hop_mac, IPV4_PROTOCOL_UDP,
-                       udp_tx_identification++, segment, segment_len);
+  int result = ipv4_send_packet(src_ip, dst_ip, next_hop_mac, IPV4_PROTOCOL_UDP,
+                                udp_tx_identification++, segment, segment_len);
   kfree(segment);
-  kfree(dst_lookup);
   kfree(resolved_next_hop);
   return result;
 }
@@ -277,10 +288,10 @@ void udp_process_packet(uint8_t *frame, uint16_t frame_len, ipv4_hdr *ipv4,
   uint8_t *payload = udp_data + sizeof(udp_hdr);
   uint16_t payload_len = dgram_len - sizeof(udp_hdr);
 
-  INFO("UDP", "RX %d.%d.%d.%d:%u -> %d.%d.%d.%d:%u (%u bytes)",
-       ipv4->src_ip[0], ipv4->src_ip[1], ipv4->src_ip[2], ipv4->src_ip[3],
-       src_port, ipv4->dst_ip[0], ipv4->dst_ip[1], ipv4->dst_ip[2],
-       ipv4->dst_ip[3], dst_port, payload_len);
+  INFO("UDP", "RX %d.%d.%d.%d:%u -> %d.%d.%d.%d:%u (%u bytes)", ipv4->src_ip[0],
+       ipv4->src_ip[1], ipv4->src_ip[2], ipv4->src_ip[3], src_port,
+       ipv4->dst_ip[0], ipv4->dst_ip[1], ipv4->dst_ip[2], ipv4->dst_ip[3],
+       dst_port, payload_len);
 
   udp_user_server_t *server = udp_find_server(dst_port);
   if (server != NULL) {

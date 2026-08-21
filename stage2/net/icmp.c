@@ -1,7 +1,9 @@
 #include "net/icmp.h"
 #include "dev/serial.h"
 #include "mem.h"
+#include "net/arp.h"
 #include "net/ipv4.h"
+#include "net/socket.h"
 #include "utils.h"
 
 static void icmp_dump_bytes(const uint8_t *data, uint16_t len) {
@@ -33,12 +35,12 @@ void icmp_process_packet(uint8_t *frame, uint16_t frame_len, ipv4_hdr *ipv4,
          ntohs(icmp->identifier), ntohs(icmp->sequence),
          icmp_len - sizeof(icmp_echo_hdr));
     icmp_dump_bytes(frame, frame_len);
+    socket_icmp_rx(ipv4->src_ip, icmp_data, icmp_len);
   }
 }
 
-int icmp_send_echo(uint8_t src_ip[4], uint8_t dst_ip[4],
-                   uint8_t next_hop_mac[6], uint16_t identifier,
-                   uint16_t sequence) {
+int icmp_send_echo(const uint8_t src_ip[4], const uint8_t dst_ip[4],
+                   uint16_t identifier, uint16_t sequence) {
   static const uint8_t payload[] = "mboot-icmp";
   size_t icmp_len = sizeof(icmp_echo_hdr) + sizeof(payload) - 1;
   uint8_t *icmp_packet = kmalloc(icmp_len);
@@ -54,13 +56,30 @@ int icmp_send_echo(uint8_t src_ip[4], uint8_t dst_ip[4],
   icmp->checksum = 0;
   icmp->checksum = htons(ipv4_checksum(icmp, icmp_len));
 
+  uint8_t next_hop[6];
+  if (ipv4_on_local_network(dst_ip)) {
+    if (!arp_resolve(dst_ip, next_hop)) {
+      INFO("ICMP", "No ARP entry for %d.%d.%d.%d", dst_ip[0], dst_ip[1],
+           dst_ip[2], dst_ip[3]);
+      kfree(icmp_packet);
+      return -1;
+    }
+  } else {
+    uint8_t gw[4];
+    if (!ipv4_get_gateway(gw) || !arp_resolve(gw, next_hop)) {
+      INFO("ICMP", "No route to %d.%d.%d.%d", dst_ip[0], dst_ip[1], dst_ip[2],
+           dst_ip[3]);
+      kfree(icmp_packet);
+      return -1;
+    }
+  }
+
   INFO("ICMP",
        "Sending echo request: %d.%d.%d.%d via %02x:%02x:%02x:%02x:%02x:%02x",
-       dst_ip[0], dst_ip[1], dst_ip[2], dst_ip[3], next_hop_mac[0],
-       next_hop_mac[1], next_hop_mac[2], next_hop_mac[3], next_hop_mac[4],
-       next_hop_mac[5]);
+       dst_ip[0], dst_ip[1], dst_ip[2], dst_ip[3], next_hop[0], next_hop[1],
+       next_hop[2], next_hop[3], next_hop[4], next_hop[5]);
 
-  int result = ipv4_send_packet(src_ip, dst_ip, next_hop_mac, IPV4_PROTOCOL_ICMP,
+  int result = ipv4_send_packet(src_ip, dst_ip, next_hop, IPV4_PROTOCOL_ICMP,
                                 sequence, icmp_packet, icmp_len);
   kfree(icmp_packet);
   return result;

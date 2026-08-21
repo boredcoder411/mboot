@@ -20,8 +20,12 @@ typedef struct {
 } __attribute__((packed)) ipv4_hdr;
 
 void ipv4_set_address(const uint8_t ip[4]);
+void ipv4_set_netmask(const uint8_t mask[4]);
+void ipv4_set_gateway(const uint8_t gw[4]);
 int ipv4_get_address(uint8_t out_ip[4]);
+int ipv4_get_gateway(uint8_t out_gw[4]);
 int ipv4_is_local_address(const uint8_t ip[4]);
+int ipv4_on_local_network(const uint8_t ip[4]);
 uint16_t ipv4_checksum(const void *data, size_t len);
 int ipv4_send_packet(const uint8_t src_ip[4], const uint8_t dst_ip[4],
                      const uint8_t next_hop_mac[6], uint8_t protocol,

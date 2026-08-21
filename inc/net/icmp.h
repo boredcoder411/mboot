@@ -16,6 +16,5 @@ typedef struct {
 
 void icmp_process_packet(uint8_t *frame, uint16_t frame_len, ipv4_hdr *ipv4,
                          uint8_t *icmp_data, uint16_t icmp_len);
-int icmp_send_echo(uint8_t src_ip[4], uint8_t dst_ip[4],
-                   uint8_t next_hop_mac[6], uint16_t identifier,
-                   uint16_t sequence);
+int icmp_send_echo(const uint8_t src_ip[4], const uint8_t dst_ip[4],
+                   uint16_t identifier, uint16_t sequence);
