@@ -64,6 +64,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/io.c stage
 	$(CC) $(CFLAGS) stage2/net/icmp.c -o $(BUILD)/icmp.o
 	$(CC) $(CFLAGS) stage2/net/udp.c -o $(BUILD)/udp.o
 	$(CC) $(CFLAGS) stage2/net/socket.c -o $(BUILD)/socket.o
+	$(CC) $(CFLAGS) stage2/net/net.c -o $(BUILD)/net.o
 	$(CC) $(CFLAGS) stage2/vfs.c -o $(BUILD)/vfs.o
 	$(CC) $(CFLAGS) stage2/elf.c -o $(BUILD)/elf.o
 	$(CC) $(CFLAGS) stage2/cpu/gdt.c -o $(BUILD)/gdt.o
@@ -101,6 +102,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/io.c stage
 		$(BUILD)/icmp.o \
 		$(BUILD)/udp.o \
 		$(BUILD)/socket.o \
+		$(BUILD)/net.o \
 		$(BUILD)/vfs.o \
 		$(BUILD)/elf.o \
 		$(BUILD)/elf_trampoline.o \

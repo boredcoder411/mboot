@@ -27,7 +27,10 @@ qemu-system-x86_64 -m 4G -drive file=image.img -serial stdio \
 ```
 
 ## UDP demo
-The init system (`user/src/init.c`) starts a UDP echo service on guest IP `10.0.2.15`, port `7`.
+The kernel brings up the network interface at boot (`stage2/net/net.c`): guest IP
+`10.0.2.15/24` with gateway `10.0.2.2`. The init system (`user/src/init.c`) starts a
+UDP echo service on guest port `7` and a `ping` (`user/src/ping.c`) that uses a raw
+ICMP socket (`socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)`).
 
 Run QEMU with host UDP forwarding:
 ```sh
@@ -48,9 +51,9 @@ nc -u -l 10007
 ```
 
 On the guest serial log you should see:
-- `init:` messages for the ARP resolution, ping, and UDP server bring-up
-- an `RX a.b.c.d:src -> 10.0.2.15:7` log line
-- an `init: UDP echo from ...` log line
+- `NET:` and `IPV4:` messages for the kernel-side interface bring-up
+- `ping:` messages for the raw-socket ICMP echo round trips
+- an `RX a.b.c.d:src -> 10.0.2.15:7` log line for the UDP datagram
 
 ## todo:
 - [x] 32 bit protected mode

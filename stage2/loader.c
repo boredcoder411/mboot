@@ -1,5 +1,5 @@
-#include "cpu/gdt.h"
 #include "cpu/cpuid.h"
+#include "cpu/gdt.h"
 #include "cpu/interrupts/idt.h"
 #include "cpu/interrupts/irq.h"
 #include "cpu/interrupts/isr.h"
@@ -12,6 +12,7 @@
 #include "elf.h"
 #include "fat16.h"
 #include "mem.h"
+#include "net/net.h"
 #include "paging.h"
 #include "scheduler.h"
 #include "utils.h"
@@ -49,6 +50,7 @@ void loader_start(void) {
   paging_init();
 
   pci_enumerate();
+  net_init();
   gdt_init();
   scheduler_init();
   pic_clear_mask(0);
