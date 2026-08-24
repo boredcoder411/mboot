@@ -4,7 +4,9 @@
 #include "net/icmp.h"
 #include "net/ipv4.h"
 #include "net/udp.h"
+#include "scheduler.h"
 #include "utils.h"
+#include <stdint.h>
 
 #define SOCKET_MAX 16
 #define SOCKET_HANDLE_BASE (-4096)
@@ -158,7 +160,12 @@ int socket_read(int handle, void *buf, size_t len) {
   if (!sock || !sock->bound || !buf || len > 65535)
     return -1;
 
-  while (sock->in_pos >= sock->in_len) {
+  for (;;) {
+    CLI();
+    if (sock->in_pos < sock->in_len) {
+      STI();
+      break;
+    }
     sock->in_len = 0;
     sock->in_pos = 0;
     int ret = udp_server_recv(sock->local_port, sock->peer_ip, &sock->peer_port,
@@ -166,9 +173,10 @@ int socket_read(int handle, void *buf, size_t len) {
     if (ret == 0) {
       sock->has_peer = 1;
       socket_flush_output(sock);
+      STI();
       break;
     }
-    asm volatile("pause");
+    scheduler_block((void *)(uintptr_t)sock->local_port);
   }
 
   uint16_t available = sock->in_len - sock->in_pos;
@@ -243,10 +251,15 @@ int socket_recvfrom(int handle, void *buf, size_t len, int flags,
     return -1;
 
   if (sock->is_raw) {
-    while (sock->in_pos >= sock->in_len) {
+    for (;;) {
+      CLI();
+      if (sock->in_pos < sock->in_len) {
+        STI();
+        break;
+      }
       sock->in_len = 0;
       sock->in_pos = 0;
-      asm volatile("pause");
+      scheduler_block(sock);
     }
 
     uint16_t available = sock->in_len - sock->in_pos;
@@ -263,9 +276,14 @@ int socket_recvfrom(int handle, void *buf, size_t len, int flags,
   uint8_t peer_ip[4];
   uint16_t peer_port = 0;
   uint16_t payload_len = 0;
-  while (udp_server_recv(sock->local_port, peer_ip, &peer_port, buf,
-                         (uint16_t)len, &payload_len) < 0) {
-    asm volatile("pause");
+  for (;;) {
+    CLI();
+    if (udp_server_recv(sock->local_port, peer_ip, &peer_port, buf,
+                        (uint16_t)len, &payload_len) >= 0) {
+      STI();
+      break;
+    }
+    scheduler_block((void *)(uintptr_t)sock->local_port);
   }
 
   memcpy(sock->peer_ip, peer_ip, sizeof(sock->peer_ip));
@@ -298,6 +316,7 @@ int socket_icmp_rx(const uint8_t src_ip[4], const void *icmp_data,
     memcpy(sock->peer_ip, src_ip, sizeof(sock->peer_ip));
     sock->has_peer = 1;
     INFO("SOCKET", "raw ICMP reply queued to socket %d (%u bytes)", i, take);
+    scheduler_wake(sock);
     return 0;
   }
 

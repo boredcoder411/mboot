@@ -2,6 +2,8 @@
 #include "dev/vga.h"
 #include "io.h"
 #include "mem.h"
+#include "scheduler.h"
+#include "utils.h"
 
 #define TTY_INPUT_SIZE 256
 #define TTY_LINE_SIZE 256
@@ -79,8 +81,14 @@ static int tty_has_input(tty_t *tty) {
 }
 
 static char tty_pop_input(tty_t *tty) {
-  while (!tty_has_input(tty))
-    asm volatile("pause");
+  for (;;) {
+    CLI();
+    if (tty_has_input(tty)) {
+      STI();
+      break;
+    }
+    scheduler_block(tty);
+  }
 
   char c = tty->input[tty->input_tail];
   tty->input_tail = (tty->input_tail + 1) % TTY_INPUT_SIZE;
@@ -220,6 +228,8 @@ void tty_handle_key(uint8_t scancode, char ascii) {
     return;
   }
 
-  if (ascii)
+  if (ascii) {
     tty_push_input(ttys[active_tty], ascii);
+    scheduler_wake(ttys[active_tty]);
+  }
 }

@@ -6,6 +6,8 @@
 #include "utils.h"
 #include "vfs.h"
 
+void scheduler_switch(void);
+
 #define MAX_TASK_ARGS 16
 
 static tcb_t *current_task;
@@ -213,6 +215,30 @@ int create_user_task_from_segments(uint32_t entry,
   return tcb->pid;
 }
 
+static void scheduler_schedule(void) {
+  if (!current_task)
+    return;
+
+  tcb_t *next = current_task;
+  do {
+    next = next->next;
+  } while (next != current_task && next->state != TASK_READY &&
+           next->state != TASK_RUNNING);
+
+  if (next != current_task) {
+    current_task = next;
+    current_task->state = TASK_RUNNING;
+  } else if (current_task->state == TASK_BLOCKED) {
+    /* No other runnable task exists; keep the current one alive. This only
+       happens for the idle task during early boot. */
+    current_task->state = TASK_RUNNING;
+  }
+
+  if (current_task->cr3 != paging_get_directory()) {
+    paging_switch(current_task->cr3);
+  }
+}
+
 uint32_t scheduler_tick(registers_t *r) {
   if (!current_task)
     return (uint32_t)r;
@@ -223,23 +249,41 @@ uint32_t scheduler_tick(registers_t *r) {
     current_task->state = TASK_READY;
   }
 
-  tcb_t *next = current_task;
-  do {
-    next = next->next;
-  } while (next->state != TASK_READY && next != current_task);
-
-  if (next->state == TASK_READY) {
-    current_task = next;
-    current_task->state = TASK_RUNNING;
-  } else {
-    current_task->state = TASK_RUNNING;
-  }
-
-  if (current_task->cr3 != paging_get_directory()) {
-    paging_switch(current_task->cr3);
-  }
+  scheduler_schedule();
 
   return current_task->esp;
+}
+
+/* Picks the next runnable task and returns its saved stack pointer. Called
+   from the assembly context switch after the old task's frame is stored. */
+uint32_t scheduler_perform_switch(uint32_t old_esp) {
+  current_task->esp = old_esp;
+  scheduler_schedule();
+  return current_task->esp;
+}
+
+/* Voluntarily give up the CPU until `wait_obj` is signalled via
+   scheduler_wake. Does not return until another task (or the timer) resumes
+   this one. */
+void scheduler_block(void *wait_obj) {
+  CLI();
+  current_task->wait_obj = wait_obj;
+  current_task->state = TASK_BLOCKED;
+  scheduler_switch();
+}
+
+/* Mark every task blocked on `wait_obj` as runnable again. Safe to call from
+   interrupt context; it never performs a context switch itself. */
+void scheduler_wake(void *wait_obj) {
+  if (!wait_obj)
+    return;
+
+  tcb_t *t = idle_task;
+  do {
+    if (t->state == TASK_BLOCKED && t->wait_obj == wait_obj)
+      t->state = TASK_READY;
+    t = t->next;
+  } while (t != idle_task);
 }
 
 int fork_current(registers_t *r) {

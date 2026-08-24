@@ -3,7 +3,9 @@
 #include "mem.h"
 #include "net/arp.h"
 #include "net/ipv4.h"
+#include "scheduler.h"
 #include "utils.h"
+#include <stdint.h>
 
 #define UDP_MAX_BINDINGS 8
 #define UDP_MAX_SERVERS 4
@@ -126,6 +128,8 @@ static void udp_server_enqueue(udp_user_server_t *server,
 
   INFO("UDP", "Queued %u bytes from port %u for userspace server on port %u",
        payload_len, src_port, server->port);
+
+  scheduler_wake((void *)(uintptr_t)server->port);
 }
 
 int udp_server_recv(uint16_t port, uint8_t src_ip_out[4],

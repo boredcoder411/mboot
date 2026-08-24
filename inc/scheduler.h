@@ -21,6 +21,7 @@ typedef struct task_control_block {
   uint32_t cr3;
   int tty;
   fd_table_t fds;
+  void *wait_obj;
   struct task_control_block *next;
 } tcb_t;
 
@@ -45,3 +46,5 @@ void task_exit() __attribute__((noreturn));
 uint32_t scheduler_tick(registers_t *r);
 fd_table_t *scheduler_current_fds(void);
 int scheduler_current_tty(void);
+void scheduler_block(void *wait_obj);
+void scheduler_wake(void *wait_obj);
