@@ -4,8 +4,8 @@
 void pit_init() {
   uint16_t divisor = 1193;
 
-  outb(0x36, PIT_COMMAND);
+  outb(PIT_COMMAND, 0x36);
 
-  outb(divisor & 0xFF, PIT_CHANNEL0);
-  outb((divisor >> 8) & 0xFF, PIT_CHANNEL0);
+  outb(PIT_CHANNEL0, divisor & 0xFF);
+  outb(PIT_CHANNEL0, (divisor >> 8) & 0xFF);
 }
