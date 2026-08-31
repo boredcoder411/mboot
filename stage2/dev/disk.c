@@ -1,7 +1,27 @@
 #include "dev/disk.h"
 #include "dev/serial.h"
 #include "io.h"
+#include "scheduler.h"
 #include "utils.h"
+
+static volatile int disk_mutex = 0;
+
+static void disk_lock(void) {
+  CLI();
+  while (disk_mutex) {
+    scheduler_block((void *)&disk_mutex);
+    CLI();
+  }
+  disk_mutex = 1;
+  STI();
+}
+
+static void disk_unlock(void) {
+  CLI();
+  disk_mutex = 0;
+  scheduler_wake((void *)&disk_mutex);
+  STI();
+}
 
 #define ATA_PRIMARY_IO 0x1F0
 #define ATA_REG_STATUS (ATA_PRIMARY_IO + 7)
@@ -19,6 +39,7 @@ void ata_wait_drq_set() {
 
 void ata_lba_read(uint32_t lba, uint8_t sector_count, void *buffer,
                   uint8_t drive) {
+  disk_lock();
   uint8_t drive_select = (drive & 1) ? 0xF0 : 0xE0;
 
   ata_wait_busy_clear();
@@ -38,14 +59,17 @@ void ata_lba_read(uint32_t lba, uint8_t sector_count, void *buffer,
       status = inb(ATA_REG_STATUS);
       if (status & 0x01) {
         WARN("DISK", "ATA error on LBA %u", lba + s);
+        disk_unlock();
         return;
       }
       if (--timeout == 0) {
         WARN("DISK", "ATA timeout on LBA %u (status=0x%02x)", lba + s, status);
+        disk_unlock();
         return;
       }
     } while ((status & 0x88) != 0x08);
 
     insw(ATA_PRIMARY_IO, (uint16_t *)buffer + (s * 256), 256);
   }
+  disk_unlock();
 }
