@@ -1,6 +1,7 @@
 #include "scheduler.h"
 #include "cpu/gdt.h"
 #include "dev/serial.h"
+#include "dev/tty.h"
 #include "mem.h"
 #include "paging.h"
 #include "utils.h"
@@ -46,6 +47,18 @@ fd_table_t *scheduler_current_fds(void) {
 }
 
 int scheduler_current_tty(void) { return current_task ? current_task->tty : 0; }
+
+int scheduler_set_tty(int tty) {
+  if (!current_task)
+    return -1;
+  if (!tty_valid(tty))
+    return -1;
+  current_task->tty = tty;
+  fd_table_t *fds = scheduler_current_fds();
+  if (fds)
+    vfs_bind_tty(fds, tty);
+  return 0;
+}
 
 void scheduler_init(void) {
   current_task = (tcb_t *)kmalloc(sizeof(tcb_t));

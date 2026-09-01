@@ -54,7 +54,8 @@ struct sockaddr_in {
 int open(const char *pathname, int flags);
 int fork(void);
 int execv(const char *pathname, char *const argv[]);
-int execv_tty(const char *pathname, char *const argv[], int tty);
+int ioctl(int fd, unsigned long request, ...);
+#define TIOCSCTTY 0x540E
 int dup2(int oldfd, int newfd);
 int socket(int domain, int type, int protocol);
 int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);

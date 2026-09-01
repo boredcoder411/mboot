@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #define TTY_COUNT 4
+#define TIOCSCTTY 0x540E
 
 void tty_init(void);
 int tty_valid(int tty);

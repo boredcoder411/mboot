@@ -1,6 +1,7 @@
 #include "cpu/interrupts/idt.h"
 #include "dev/keyboard.h"
 #include "dev/serial.h"
+#include "dev/tty.h"
 #include "dev/vga.h"
 #include "elf.h"
 #include "io.h"
@@ -77,6 +78,22 @@ void syscall_dispatch(registers_t *r) {
     INFO("SYSCALL", "exec(\"%s\", argc=%d, tty=%d) = %d", pathname, argc, tty,
          pid);
     r->eax = pid;
+    break;
+  }
+  case 54: { // sys_ioctl
+    int fd = (int)r->ebx;
+    unsigned long request = (unsigned long)r->ecx;
+    unsigned long arg = (unsigned long)r->edx;
+    if (request == TIOCSCTTY) {
+      int tty = (int)arg;
+      int ret = scheduler_set_tty(tty);
+      INFO("SYSCALL", "ioctl(%d, TIOCSCTTY, %d) = %d", fd, tty, ret);
+      r->eax = ret;
+    } else {
+      WARN("SYSCALL", "unknown ioctl 0x%lx", request);
+      r->eax = -1;
+    }
+    (void)fd;
     break;
   }
   case 63: { // sys_dup2

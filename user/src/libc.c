@@ -7,6 +7,7 @@
 #define __NR_open 5
 #define __NR_close 6
 #define __NR_exec 11
+#define __NR_ioctl 54
 #define __NR_dup2 63
 #define __NR_socket 300
 #define __NR_bind 301
@@ -58,19 +59,26 @@ int close(int fd) {
   return ret;
 }
 
-int execv(const char *pathname, char *const argv[]) {
-  return execv_tty(pathname, argv, -1);
-}
-
-int execv_tty(const char *pathname, char *const argv[], int tty) {
-  int argc = 0;
-  while (argv && argv[argc])
-    argc++;
-
+int ioctl(int fd, unsigned long request, ...) {
+  va_list ap;
+  va_start(ap, request);
+  unsigned long arg = va_arg(ap, unsigned long);
+  va_end(ap);
   int ret;
   asm volatile("int $0x80"
                : "=a"(ret)
-               : "0"(__NR_exec), "b"(pathname), "c"(argv), "d"(argc), "S"(tty));
+               : "0"(__NR_ioctl), "b"(fd), "c"(request), "d"(arg));
+  return ret;
+}
+
+int execv(const char *pathname, char *const argv[]) {
+  int argc = 0;
+  while (argv && argv[argc])
+    argc++;
+  int ret;
+  asm volatile("int $0x80"
+               : "=a"(ret)
+               : "0"(__NR_exec), "b"(pathname), "c"(argv), "d"(argc), "S"(-1));
   return ret;
 }
 

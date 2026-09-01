@@ -46,5 +46,6 @@ void task_exit() __attribute__((noreturn));
 uint32_t scheduler_tick(registers_t *r);
 fd_table_t *scheduler_current_fds(void);
 int scheduler_current_tty(void);
+int scheduler_set_tty(int tty);
 void scheduler_block(void *wait_obj);
 void scheduler_wake(void *wait_obj);
