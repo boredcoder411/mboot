@@ -117,7 +117,7 @@ stage2: stage2/start_loader.asm stage2/loader.c stage2/utils.c stage2/io.c stage
 	$(OBJCOPY) --strip-all kernel.elf
 
 image: file_transforms
-	@./image.sh test_files/hi.txt build/libc.elf build/test.elf build/lua.elf build/init.elf build/udp_lua.elf build/socket_echo.elf build/demo1.elf build/demo2.elf build/fork_test.elf build/ping.elf $(wildcard test_files/*.lua)
+	@./image.sh test_files/hi.txt build/libc.elf build/test.elf build/lua.elf build/init.elf build/getty.elf build/udp_lua.elf build/socket_echo.elf build/demo1.elf build/demo2.elf build/fork_test.elf build/ping.elf $(wildcard test_files/*.lua)
 
 file_transforms: | $(BUILD)
 	@echo "Building libc as separate object..."
@@ -129,14 +129,14 @@ file_transforms: | $(BUILD)
 	@echo "Building socket echo test..."
 	$(CC) $(USER_CFLAGS) -c test_files/socket_echo.c -o $(BUILD)/socket_echo.o
 	@echo "Building demo programs..."
-	$(CC) $(USER_CFLAGS) -c test_files/demo_task1.c -o $(BUILD)/demo1.o
-	$(CC) $(USER_CFLAGS) -c test_files/demo_task2.c -o $(BUILD)/demo2.o
 	@echo "Building init program..."
 	$(CC) $(USER_CFLAGS) -c user/src/init.c -o $(BUILD)/init.o
 	@echo "Building UDP Lua server..."
-	$(CC) $(USER_CFLAGS) -c user/src/udp_echo.c -o $(BUILD)/udp_lua.o
+	$(CC) $(USER_CFLAGS) -c test_files/udp_lua.c -o $(BUILD)/udp_lua.o
 	@echo "Building ping..."
-	$(CC) $(USER_CFLAGS) -c user/src/ping.c -o $(BUILD)/ping.o
+	$(CC) $(USER_CFLAGS) -c test_files/ping.c -o $(BUILD)/ping.o
+	@echo "Building getty..."
+	$(CC) $(USER_CFLAGS) -c user/src/getty.c -o $(BUILD)/getty.o
 	@echo "Building entry points..."
 	nasm -f elf user/src/crt0.s -o $(BUILD)/crt0.o
 	@echo "Creating libc.elf..."
@@ -147,15 +147,14 @@ file_transforms: | $(BUILD)
 	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/fork_test.o -Ttext 0x53000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/fork_test.elf
 	@echo "Creating socket echo test..."
 	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/socket_echo.o -Ttext 0x55000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/socket_echo.elf
-	@echo "Creating demo ELFs..."
-	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/demo1.o -Ttext 0x51000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/demo1.elf
-	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/demo2.o -Ttext 0x52000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/demo2.elf
 	@echo "Creating init.elf..."
 	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/init.o -Ttext 0x48000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/init.elf
 	@echo "Creating UDP Lua server..."
 	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/udp_lua.o -Ttext 0x54000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/udp_lua.elf
 	@echo "Creating ping..."
 	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/ping.o -Ttext 0x56000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/ping.elf
+	@echo "Creating getty..."
+	$(LD) $(BUILD)/libc.o $(BUILD)/crt0.o $(BUILD)/getty.o -Ttext 0x47000000 -e _start $(USER_LDFLAGS) -o $(BUILD)/getty.elf
 	@echo "Building Lua 5.5.0..."
 	$(MAKE) -C user/lua -j4
 	cp user/lua/lua $(BUILD)/lua.elf
