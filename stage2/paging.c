@@ -81,8 +81,10 @@ void paging_map_page(uint32_t pd, uint32_t vaddr, uint32_t paddr,
 
   if (entry & PAGE_SIZE_4MB) {
     uint32_t table = alloc_aligned_page();
+    uint32_t phys_base = entry & 0xFFC00000U;
     for (uint32_t i = 0; i < 1024; ++i) {
-      ((uint32_t *)table)[i] = (i << 12) | PAGE_PRESENT | PAGE_WRITABLE;
+      ((uint32_t *)table)[i] =
+          (phys_base + (i << 12)) | PAGE_PRESENT | PAGE_WRITABLE;
     }
     dir[dir_idx] = (table & 0xFFFFF000U) | PAGE_PRESENT | PAGE_WRITABLE;
     entry = dir[dir_idx];
