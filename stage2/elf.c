@@ -1,7 +1,9 @@
 #include "elf.h"
 #include "dev/serial.h"
 #include "fat16.h"
+#include "io.h"
 #include "mem.h"
+#include "paging.h"
 #include "scheduler.h"
 #include "vfs.h"
 
@@ -67,11 +69,75 @@ int spawn_elf(const char *path, int argc, char **argv, int tty) {
 
   if (segment_count == 0) {
     INFO("ELF", "error: %s has no loadable user segments", path);
+    kfree(buf);
+    kfree(segments);
     return -1;
   }
 
   return create_user_task_from_segments(eh->entry, segments, segment_count,
                                         argc, argv, tty);
+}
+
+uint32_t exec_elf(const char *path, int argc, char **argv, int tty,
+                  registers_t *r) {
+  int file = file_open(path);
+  if (file < 0) {
+    INFO("ELF", "error: could not find %s", path);
+    return 0;
+  }
+
+  int size = fat16_get_size(file);
+  void *buf = kmalloc(size);
+  if (!buf) {
+    file_close(file);
+    return 0;
+  }
+  file_read(file, size, buf);
+  file_close(file);
+
+  INFO("ELF", "%s loaded (%d bytes) for exec", path, size);
+  Elf32_Ehdr *eh = (Elf32_Ehdr *)buf;
+  if (eh->magic != ELF_MAGIC) {
+    INFO("ELF", "error: %s is not a valid ELF", path);
+    kfree(buf);
+    return 0;
+  }
+
+  user_segment_t *segments =
+      (user_segment_t *)kmalloc(eh->phnum * sizeof(user_segment_t));
+  if (!segments) {
+    kfree(buf);
+    return 0;
+  }
+  int segment_count = 0;
+  Elf32_Phdr *ph = (Elf32_Phdr *)((uint8_t *)buf + eh->phoff);
+  for (int i = 0; i < eh->phnum; i++, ph++) {
+    if (ph->type != PT_LOAD)
+      continue;
+    if (ph->vaddr < 0x1000000U)
+      continue;
+    segments[segment_count++] = (user_segment_t){
+        .vaddr = ph->vaddr,
+        .filesz = ph->filesz,
+        .memsz = ph->memsz,
+        .data = (uint8_t *)buf + ph->offset,
+    };
+  }
+
+  if (segment_count == 0) {
+    INFO("ELF", "error: %s has no loadable user segments", path);
+    kfree(buf);
+    kfree(segments);
+    return 0;
+  }
+
+  uint32_t new_sp = scheduler_exec_replace(eh->entry, segments, segment_count,
+                                           argc, argv, tty, r);
+
+  kfree(buf);
+  kfree(segments);
+
+  return new_sp;
 }
 
 void jump_to_entry(void *elf_data) {

@@ -54,6 +54,7 @@ struct sockaddr_in {
 int open(const char *pathname, int flags);
 int fork(void);
 int execv(const char *pathname, char *const argv[]);
+int waitpid(int pid);
 int ioctl(int fd, unsigned long request, ...);
 #define TIOCSCTTY 0x540E
 int dup2(int oldfd, int newfd);

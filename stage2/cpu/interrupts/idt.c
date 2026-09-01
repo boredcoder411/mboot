@@ -11,7 +11,7 @@
 
 extern void syscall_handler();
 
-void syscall_dispatch(registers_t *r) {
+uint32_t syscall_dispatch(registers_t *r) {
   switch (r->eax) {
   case 1: { // sys_exit
     uint32_t exit_code = r->ebx;
@@ -64,6 +64,13 @@ void syscall_dispatch(registers_t *r) {
     }
     break;
   }
+  case 7: { // sys_waitpid
+    int pid = (int)r->ebx;
+    int ret = scheduler_wait_pid(pid);
+    r->eax = (ret >= 0) ? (uint32_t)ret : 0xFFFFFFFFU;
+    INFO("SYSCALL", "waitpid(%d) = %d", pid, ret);
+    break;
+  }
   case 11: { // sys_exec
     const char *pathname = (const char *)r->ebx;
     char **argv = (char **)r->ecx;
@@ -74,10 +81,16 @@ void syscall_dispatch(registers_t *r) {
       argv = default_argv;
       argc = 1;
     }
-    int pid = spawn_elf(pathname, argc, argv, tty);
-    INFO("SYSCALL", "exec(\"%s\", argc=%d, tty=%d) = %d", pathname, argc, tty,
-         pid);
-    r->eax = pid;
+    INFO("SYSCALL", "exec(\"%s\", argc=%d, tty=%d) attempting", pathname, argc,
+         tty);
+    uint32_t new_sp = exec_elf(pathname, argc, argv, tty, r);
+    if (new_sp) {
+      INFO("SYSCALL", "exec replaced (new sp 0x%X)", new_sp);
+      return new_sp;
+    }
+    INFO("SYSCALL", "exec(\"%s\", argc=%d, tty=%d) failed", pathname, argc,
+         tty);
+    r->eax = 0xFFFFFFFFU;
     break;
   }
   case 54: { // sys_ioctl
@@ -139,6 +152,7 @@ void syscall_dispatch(registers_t *r) {
     WARN("SYSCALL", "unknown syscall %d", r->eax);
     r->eax = -1;
   }
+  return (uint32_t)r;
 }
 
 idt_entry_t idt[IDT_ENTRIES];

@@ -6,6 +6,7 @@
 #define __NR_write 4
 #define __NR_open 5
 #define __NR_close 6
+#define __NR_waitpid 7
 #define __NR_exec 11
 #define __NR_ioctl 54
 #define __NR_dup2 63
@@ -59,6 +60,12 @@ int close(int fd) {
   return ret;
 }
 
+int waitpid(int pid) {
+  int ret;
+  asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_waitpid), "b"(pid));
+  return ret;
+}
+
 int ioctl(int fd, unsigned long request, ...) {
   va_list ap;
   va_start(ap, request);
@@ -78,8 +85,13 @@ int execv(const char *pathname, char *const argv[]) {
   int ret;
   asm volatile("int $0x80"
                : "=a"(ret)
-               : "0"(__NR_exec), "b"(pathname), "c"(argv), "d"(argc), "S"(-1));
-  return ret;
+               : "0"(__NR_exec), "b"(pathname), "c"(argv), "d"(argc), "S"(-1)
+               : "memory");
+  if (ret >= 0) {
+    ret = -1;
+  }
+  errno = ENOENT;
+  return -1;
 }
 
 int dup2(int oldfd, int newfd) {
@@ -1058,9 +1070,20 @@ void abort(void) {
 }
 
 int system(const char *command) {
-  int ret;
-  asm volatile("int $0x80" : "=a"(ret) : "0"(__NR_exec), "b"(command));
-  return ret < 0 ? -1 : 0;
+  if (!command)
+    return 1;
+  int pid = fork();
+  if (pid < 0)
+    return -1;
+  if (pid == 0) {
+    char *argv[] = {(char *)command, NULL};
+    execv(command, argv);
+    exit(127);
+  }
+  int st = waitpid(pid);
+  if (st < 0)
+    return -1;
+  return st;
 }
 
 char *getenv(const char *name) {

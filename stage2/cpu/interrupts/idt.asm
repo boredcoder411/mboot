@@ -41,6 +41,7 @@ syscall_handler:
     push esp
     call syscall_dispatch
     add esp, 4
+    mov esp, eax
 
     popa_c
     add esp, 8

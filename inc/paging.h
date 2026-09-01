@@ -17,3 +17,4 @@ uint32_t paging_clone_directory(uint32_t parent_pd);
 void paging_map_page(uint32_t pd, uint32_t vaddr, uint32_t paddr,
                      uint32_t flags);
 void paging_switch(uint32_t pd);
+void paging_free_directory(uint32_t pd);

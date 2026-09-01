@@ -22,6 +22,7 @@ typedef struct task_control_block {
   int tty;
   fd_table_t fds;
   void *wait_obj;
+  int exit_code;
   struct task_control_block *next;
 } tcb_t;
 
@@ -49,3 +50,9 @@ int scheduler_current_tty(void);
 int scheduler_set_tty(int tty);
 void scheduler_block(void *wait_obj);
 void scheduler_wake(void *wait_obj);
+tcb_t *scheduler_get_current(void);
+uint32_t scheduler_exec_replace(uint32_t entry, const user_segment_t *segments,
+                                 int segment_count, int argc, char **argv,
+                                 int tty, registers_t *r);
+tcb_t *scheduler_find_by_pid(int pid);
+int scheduler_wait_pid(int pid);

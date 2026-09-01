@@ -118,3 +118,23 @@ uint32_t paging_clone_directory(uint32_t parent_pd) {
 }
 
 void paging_switch(uint32_t pd) { write_cr3(pd); }
+
+void paging_free_directory(uint32_t pd) {
+  if (!pd || pd == (uint32_t)page_directory)
+    return;
+  uint32_t *dir = (uint32_t *)pd;
+  for (uint32_t dir_idx = 0; dir_idx < PAGE_DIRECTORY_ENTRIES; ++dir_idx) {
+    uint32_t entry = dir[dir_idx];
+    if (!(entry & PAGE_PRESENT) || (entry & PAGE_SIZE_4MB))
+      continue;
+    uint32_t *table = (uint32_t *)(entry & 0xFFFFF000U);
+    for (uint32_t table_idx = 0; table_idx < 1024; ++table_idx) {
+      uint32_t pte = table[table_idx];
+      if (!(pte & PAGE_PRESENT) || !(pte & PAGE_USER))
+        continue;
+      table[table_idx] = 0;
+    }
+    dir[dir_idx] = page_directory[dir_idx];
+  }
+  (void)pd;
+}
