@@ -25,7 +25,8 @@ static tty_t *ttys[TTY_COUNT];
 static int active_tty;
 static int tty_ready;
 
-static uint16_t *vga_buffer(void) { return (uint16_t *)VGA_BUF; }
+static int early_x;
+static int early_y;
 
 static void tty_clear(tty_t *tty) {
   uint16_t blank = (uint16_t)' ' | VGA_WHITE_ON_BLACK;
@@ -43,14 +44,14 @@ static void tty_render(int tty_id) {
   tty_t *tty = ttys[tty_id];
   if (!tty)
     return;
-  memcpy(vga_buffer(), tty->cells, sizeof(tty->cells));
-  update_cursor(tty->cur_x, tty->cur_y);
+  vga_draw_buffer(tty->cells);
+  vga_move_cursor(tty->cur_x, tty->cur_y);
 }
 
 static void tty_put_cell(tty_t *tty, int x, int y, char c) {
   tty->cells[y * VGA_WIDTH + x] = (uint16_t)c | VGA_WHITE_ON_BLACK;
   if (tty == ttys[active_tty])
-    vga_buffer()[y * VGA_WIDTH + x] = (uint16_t)c | VGA_WHITE_ON_BLACK;
+    vga_put_char(x, y, c);
 }
 
 static void tty_scroll(tty_t *tty) {
@@ -66,6 +67,53 @@ static void tty_scroll(tty_t *tty) {
   tty->cur_y = VGA_HEIGHT - 1;
   if (tty == ttys[active_tty])
     tty_render(active_tty);
+}
+
+static void early_scroll(void) {
+  for (int y = 1; y < VGA_HEIGHT; y++) {
+    for (int x = 0; x < VGA_WIDTH; x++) {
+      char c = vga_get_char(x, y);
+      vga_put_char(x, y - 1, c);
+    }
+  }
+  for (int x = 0; x < VGA_WIDTH; x++)
+    vga_clear_char(x, VGA_HEIGHT - 1);
+  early_y = VGA_HEIGHT - 1;
+}
+
+static void tty_early_write(char c) {
+  switch (c) {
+  case '\n':
+    early_x = 0;
+    early_y++;
+    break;
+  case '\r':
+    early_x = 0;
+    break;
+  case '\b':
+    if (early_x > 0) {
+      early_x--;
+      vga_clear_char(early_x, early_y);
+    }
+    break;
+  case '\t':
+    early_x = (early_x + 8) & ~(8 - 1);
+    break;
+  default:
+    vga_put_char(early_x, early_y, c);
+    early_x++;
+    break;
+  }
+
+  if (early_x >= VGA_WIDTH) {
+    early_x = 0;
+    early_y++;
+  }
+
+  if (early_y >= VGA_HEIGHT)
+    early_scroll();
+
+  vga_move_cursor(early_x, early_y);
 }
 
 static void tty_push_input(tty_t *tty, char c) {
@@ -108,6 +156,8 @@ void tty_init(void) {
   }
   active_tty = 0;
   tty_ready = 1;
+  early_x = 0;
+  early_y = 0;
   tty_render(active_tty);
 }
 
@@ -120,7 +170,7 @@ void tty_switch(int tty) {
 
 void tty_write(int tty_id, char c) {
   if (!tty_ready || !tty_valid(tty_id) || !ttys[tty_id]) {
-    vga_write(c);
+    tty_early_write(c);
     return;
   }
 
@@ -143,6 +193,11 @@ void tty_write(int tty_id, char c) {
   case '\t':
     tty->cur_x = (tty->cur_x + 8) & ~(8 - 1);
     break;
+  case '\f':
+    tty_clear(tty);
+    if (tty_id == active_tty)
+      tty_render(active_tty);
+    break;
   default:
     tty_put_cell(tty, tty->cur_x, tty->cur_y, c);
     tty->cur_x++;
@@ -158,7 +213,7 @@ void tty_write(int tty_id, char c) {
     tty_scroll(tty);
 
   if (tty_id == active_tty)
-    update_cursor(tty->cur_x, tty->cur_y);
+    vga_move_cursor(tty->cur_x, tty->cur_y);
 }
 
 int tty_write_buf(int tty, const char *buf, size_t size) {
