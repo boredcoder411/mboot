@@ -9,3 +9,22 @@ assets.wad
 user/lua/liblua.a
 user/lua/lua
 user/lua/luac
+
+# LaTeX build output
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.bbl
+*.blg
+*.lof
+*.lot
+*.nav
+*.snm
+*.vrb
+*.xdv
+*.tex.bak
+docs/mboot_progression.pdf

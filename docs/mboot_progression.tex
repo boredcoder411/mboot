@@ -1,1477 +1,1398 @@
-\documentclass[11pt]{article}
-
-\usepackage[margin=1in]{geometry}
+\documentclass[11pt,a4paper]{scrartcl}
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
-\usepackage{listings}
 \usepackage{xcolor}
+\usepackage{listings}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
 \usepackage{enumitem}
 \usepackage{setspace}
-\usepackage{graphicx}
-\usepackage{booktabs}
-
-% hyperref should be loaded last
 \usepackage{hyperref}
 
-\graphicspath{{../screenshots/}}
-
-\makeatletter
-\newcommand{\annexlabel}[2]{%
-  \phantomsection
-  \def\@currentlabel{#2}%
-  \label{#1}}
-\makeatother
-
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  urlcolor=blue!50!black,
+  citecolor=blue!50!black,
+  pdftitle={Could a 1990s PC Run Lua?},
+  pdfauthor={Theo Marcos}
+}
 \lstset{
   basicstyle=\ttfamily\small,
   breaklines=true,
   columns=fullflexible,
+  keepspaces=true,
   frame=single,
-  backgroundcolor=\color{gray!10},
-  keywordstyle=\color{blue!70!black},
-  commentstyle=\color{green!50!black},
-  stringstyle=\color{red!60!black},
+  backgroundcolor=\color{gray!5},
   showstringspaces=false,
-  numbers=left,
-  numberstyle=\tiny\color{gray!70!black},
-  xleftmargin=2em,
-  captionpos=b,
+  captionpos=b
 }
-
-\hypersetup{
-  colorlinks=true,
-  linkcolor=blue!60!black,
-  urlcolor=blue!60!black,
-  citecolor=blue!60!black,
-  pdftitle={mboot: An Operating System Written from Scratch to Run Lua 5.5.0},
-}
-
-% Tolerate long unbreakable tokens (\texttt{...}) without overfull boxes
 \setlength{\emergencystretch}{3em}
+\setlist{itemsep=0.25em,topsep=0.5em}
 \onehalfspacing
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
 
-\title{\textbf{mboot: An Operating System Written from Scratch\\to Run Lua 5.5.0}\\[0.5em]}
-\author{Theo Marcos\\[0.4em]
-\large Supervised by Daniel Kessler}
-\date{April 2026}
+\title{\textbf{Could a 1990s PC Run Lua?}\\[0.4em]\large Building a Small Operating System in QEMU}
+\author{Theo Marcos\\[0.4em]\large Supervised by Daniel Kessler}
+\date{October 2026}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-\noindent This report documents \texttt{mboot}, an operating system written
-from scratch as my TM, whose goal was
-to run the Lua 5.5.0 interpreter as a user program. Starting from a bare
-BIOS boot, \texttt{mboot} implements a bootloader, protected-mode setup,
-interrupt handling, physical memory management and paging, an ATA disk
-driver, a read-only FAT16 filesystem, an ELF32 loader, a preemptive
-round-robin scheduler with \texttt{fork}/\texttt{exec}/\texttt{waitpid}, a
-minimal C library, and a small network stack. Lua 5.5.0 runs \texttt{unmodified} as a user
-program and provides an interactive prompt on each of four virtual
-terminals about 0.3 seconds after kernel initialization begins in QEMU. The
-report describes the system architecture, the Lua integration, the most
-significant bugs encountered along the way, and what I learned from the
-project. Three annexes, placed at the front of the report so that
-beginners are not left behind, introduce the x86 architecture from
-first principles, list \texttt{mboot}'s memory map, and document its
-system call interface; together they are the only prerequisites for the
-main text.
+\noindent This project began with the goal of building a Unix-like operating
+system that could run Linux applications. That compatibility layer proved
+too ambitious, so I changed the target: run the unchanged Lua 5.5.0
+interpreter on an operating system of my own. The result is a small 32-bit
+OS that boots in QEMU and reaches four interactive Lua prompts. This report
+explains how I changed direction, what I built to make that demonstration
+work, and what remains unfinished. Neither the Linux compatibility layer
+nor the optional learning scheduler was implemented.
 \end{abstract}
 
-\newpage
-
+\clearpage
 \tableofcontents
+\clearpage
+
 \section{Introduction}
-\label{sec:intro}
 
-\textbf{Back to the future.} Imagine we could travel back in time to 1993,
-the year Lua was born, and land next to a brand-new PC: a 386 or 486,
-maybe 4 MB of RAM, a hard disk measured in tens of megabytes, a VGA
-screen. In our pocket we carry a CD-ROM containing \texttt{mboot}: a
-disk image built in 2026, whose programs include the Lua 5.5.0
-interpreter, code that will not exist for another 32 years. (A
-CD-ROM, deliberately: the format was standardized in 1988 and every PC
-of the era could read one. A USB flash drive would have been useless as
-the USB standard was published in 1996, and flash drives did not arrive
-until around 2000.) Could we really use our disc?
+Imagine travelling back to the 1990s with a CD-ROM containing the C source
+code of the Lua interpreter—even though Lua did not yet exist. If you put
+that disc into a computer of the time, could you use the program? The source
+code alone would not be enough: the computer would need an operating system
+that could load it and provide the services it expects.
 
-The hardware could run it; the software could not. Every
-instruction Lua needs already exists in a 1993 PC. The 32-bit machine
-that Lua's implementation leans on (32-bit integers and pointers, a
-flat address space with room for a few megabytes) has been part of
-x86 since the Intel 80386 of 1985 (Table~\ref{tab:chronology}); ATA
-hard disks (1986), FAT filesystems (1984), VGA displays and PS/2
-keyboards (1987) are all there. What is missing is everything around
-the interpreter: an operating system to manage that hardware, and a C
-library to satisfy Lua's calls to \texttt{malloc}, \texttt{printf}, and
-\texttt{setjmp}. In 1993, the only practical choice on a PC would have
-been MS-DOS plus a commercial C compiler, and without an operating
-system underneath, a disc of 32-bit executables is a coaster. This
-project builds the missing piece. \texttt{mboot} is a small operating
-system, written from scratch, whose reason to exist is that a 2025
-interpreter can run on bare x86 metal, which means that with a time
-machine, and mboot's image copied onto that hard disk with whatever
-tools the era had, a machine from 1993 could speak a language from
-2025.
+This is a thought experiment, not a claim that I tested \code{mboot} on a
+1990s computer. I developed and tested it in QEMU, an emulator. The question
+helped me focus on a practical challenge: what must an operating system
+provide before an existing interpreter can run?
+
+My first answer was to aim for a Unix-like OS with a Linux compatibility
+layer, followed—if time allowed—by a scheduler that learned from the user's
+habits. I did not complete either feature. The compatibility layer was too
+large for this project, so I narrowed the goal to running stock Lua on my
+own OS. The rest of the report follows that work: how the system starts,
+what Lua needs from it, what I observed, and where the result is still
+limited. Readers who want more background on x86 can use the reference
+appendices at the end; they are not required to follow the main story.
+
+\section{The original goal and the change in scope}
+\label{sec:goals}
+
+I started this project wanting to build a Unix-like operating system that
+could run Linux applications through a compatibility layer. The optional
+second part was a scheduler that learned which tasks should receive more
+CPU time based on the user's habits. The compatibility layer was the main
+ambition; the learning scheduler depended on having time left after that.
+
+The compatibility layer too complex to implement within the project and
+changed direction. Instead of trying to run existing Linux executables,
+I worked towards supporting the stock Lua interpreter by compiling its
+source against a C library and system-call interface of my own. This
+approach would keep the Lua source code intact, so it would still run
+on both Linux and \code{mboot} but would just need to be recompiled.
+
+Recompiling Lua gave me a more concrete target. I could work from the
+functions the interpreter actually called and provide the environment
+around it. The resulting executable belongs to \code{mboot}: it is not
+a Linux binary, and running it does not establish Linux compatibility.
+The kernel borrows some Unix ideas, including file descriptors and
+\code{fork}/\code{exec}, but their presence does not make the system a
+complete Unix implementation.
+
+The scheduler also ended up much simpler than the optional original idea.
+It simply rotates between runnable tasks every 16ms. It does not collect
+a history of the user's activity, learn preferences, or adjust priorities
+from that history. It is useful infrastructure for running several programs,
+but it is not a partial implementation of the learning scheduler I proposed.
+
+The revised aim was therefore to get an existing language interpreter
+running on an OS I was building. Reaching a Lua prompt required a chain
+of working components: loading code from disk, preparing its memory and
+stack, supplying library functions, and connecting input and output.
+That became the practical focus of the project.
+
+
+\section{How the project developed}
+\label{sec:history}
+
+The work did not follow a straight path from the bootloader to Lua.
+Graphics experiments, networking, filesystem work, and process management
+overlapped. Some early components were replaced. The Git history gives a
+more reliable account of those changes than a neat sequence written after
+the fact. Table~\ref{tab:history} lists selected milestones; the dates are
+commit dates, not measurements of how long each task took.
 
 \begin{table}[htbp]
 \centering
-\caption{The chronology behind the thought experiment: everything
-\texttt{mboot} needs existed well before Lua 5.5.0.}
-\label{tab:chronology}
-\begin{tabular}{@{}clp{7.3cm}@{}}
+\small
+\caption{Selected milestones recorded in the repository.}
+\label{tab:history}
+\begin{tabularx}{\textwidth}{@{}P{26mm}YP{22mm}@{}}
 \toprule
-\textbf{Year} & \textbf{Event} & \textbf{Why it matters here} \\
+Date & Change & Commit \\
 \midrule
-1978 & Intel 8086 & The x86 instruction set begins \\
-1981 & IBM PC, BIOS, MBR boot & The boot process \texttt{mboot} still uses \\
-1984 & FAT16 appears (DOS 3.0) & The filesystem \texttt{mboot} reads \\
-1985 & Intel 80386 & 32-bit protected mode, paging, rings: the architecture \texttt{mboot} targets \\
-1986 & ATA (IDE) standard & The disk driver \texttt{mboot} speaks \\
-1987 & VGA text mode, PS/2 keyboard & The console and input of \texttt{mboot} \\
-1988 & ISO 9660 standardizes CD-ROM & The disc our time traveler carries \\
-1993 & Lua 1.0 first runs (28 July, never public) & The year we travel to \\
-1994 & Lua 1.1, first public release (8 July) & Lua becomes usable by the world \\
-1995 & ELF specification 1.2 & The executable format \texttt{mboot} loads \\
-1996 & USB 1.0 is published & Too late for a USB stick in the story \\
-2025 & Lua 5.5.0 released (22 Dec) & The interpreter \texttt{mboot} runs \\
-2025--26 & \texttt{mboot} is built & This project \\
+10 Sep. 2025 & Initial bootloader project. & \code{9234416} \\
+Sep.--Oct. 2025 & An early scheduler was added, then removed. & \code{aa1d32a}, \code{2a0b759} \\
+Oct.--Nov. 2025 & FAT16, a virtual filesystem layer, and basic ELF loading were added. & \code{cbcc297}, \code{1091c62}, \code{4ec7ed7} \\
+Nov. 2025 & A position-independent build experiment was dropped in favour of a paging plan. & \code{8405dad} \\
+Apr. 2026 & IPv4, ICMP, and UDP support developed further. & \code{b65cea6}, \code{1688a3f}, \code{34a5347} \\
+18--23 Jul. 2026 & Lua 5.5.0, C library support, and a new round-robin scheduler were added. & \code{58089d2}, \code{0585001}, \code{cca70b5} \\
+Aug. 2026 & Startup moved into a separate \code{init} program; per-process paging, multiple terminals, sockets, and task blocking followed. & \code{ce6d919}, \code{0a7c4a4}, \code{8d6e2cd}, \code{92947b1} \\
+Sep. 2026 & \code{exec} replacement and page mapping were corrected; the terminal and VGA layers were separated more clearly. & \code{5e1da99}, \code{eb4e31f}, \code{5ae0408} \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
-For my TM project, I decided to write an operating system from scratch. I have been
-programming for about a decade, with a lot of embedded work along the way,
-building the kinds of abstractions that most programs take for granted. I
-wanted to understand x86 on a deeper level and to see what it really takes
-to get a complicated program running, which is why I picked this project.
+These changes also show why the current source and earlier demonstrations
+need to be kept distinct. Older versions used graphics demos or launched
+network programs during startup. The current \code{init} starts four
+terminal sessions, each of which launches Lua. The network demonstration
+programs remain in the repository, but the current startup program does
+not launch them automatically.
 
-The specific goal I chose was to make my operating system capable of running
-Lua 5.5.0. I initially wanted to build a ``real'' operating system, but I
-quickly realized that a full modern OS is not realistic scope for a TM. I
-needed a concrete, achievable target that would still force me to build
-genuine OS infrastructure. Lua 5.5.0 was a natural choice: it is a small,
-self-contained, widely used scripting language, and getting a language
-runtime to execute is a far more meaningful milestone than simply getting a
-kernel to print text to a screen. A language runtime needs memory
-allocation, file I/O, a C library, a process to run in, and a working
-interrupt and timer infrastructure. If I could run Lua, I would have built
-most of an operating system.
 
-The central challenge was: how could I go from a machine that had just
-booted (with no memory manager, no filesystem, no scheduler, and no C
-library) to an environment capable of loading and executing Lua 5.5.0?
-
-\clearpage
-\section*{Annex A: A primer on x86, from first principles}
-\annexlabel{annex:x86}{A}
-\addcontentsline{toc}{section}{Annex A: A primer on x86, from first principles}
-
-This annex explains, for a reader who has never done any systems
-programming, the hardware concepts the report assumes. It requires no
-knowledge beyond basic programming and every section below relates the hardware back to ideas you
-already use every day.
-
-\subsection*{A translation guide of the vocabulary used in this document}
-
-\begin{itemize}[nosep]
-  \item Every \texttt{print} you have ever written ends as a request to
-  the operating system. A system call (Section~A.5) is exactly that
-  request, made by executing a special CPU instruction instead of calling
-  an ordinary function.
-  \item A process is to a thread what a whole separate Python
-  interpreter is to two threads inside one: its own program with its own
-  memory, sharing only the CPU.
-  \item File descriptors (used throughout Annex~\ref{annex:syscalls}) are
-  small integers standing for open files; CPython's file objects wrap
-  one under the hood, with 0, 1, and 2 fixed for standard input, output,
-  and error, exactly as in Python.
-  \item The scheduler does for processes what your desktop already does
-  for windows: give each a turn in rotation (round-robin).
-  \item Paging is like every process owning a private dict that maps its
-  own addresses onto physical memory, so two programs can use the same
-  address without ever seeing each other's objects.
-\end{itemize}
-
-\subsection*{A.1 The CPU, registers, and the stack}
-
-A processor executes instructions one after another; each instruction is
-stored in memory as a few bytes (machine code). The CPU keeps a handful of
-very fast slots called registers. On 32-bit x86 there are the
-general-purpose ones \texttt{EAX}, \texttt{EBX}, \texttt{ECX},
-\texttt{EDX}, \texttt{ESI}, \texttt{EDI}, \texttt{ESP}, \texttt{EBP}, plus
-one special register, \texttt{EIP} (the instruction pointer), which holds
-the address of the next instruction. Jumps, calls, and interrupts are the
-only things that make \texttt{EIP} skip somewhere else. \texttt{ESP} points
-to the stack, an area of memory that function calls use to store
-return addresses and local variables (last thing in, first thing out),
-the same kind of bookkeeping as the call stack you see in a Python
-traceback, but done by the CPU in hardware.
-Working in C at this level is natural because a C compiler maps variables
-and calls almost directly onto registers and the stack, but the C
-standard library (\texttt{malloc}, \texttt{printf}, \ldots) is
-itself software that must already exist. Providing it is one of
-\texttt{mboot}'s jobs.
-
-\subsection*{A.2 Power-on: real mode and the BIOS}
-
-When a PC switches on there is no operating system; the firmware, the
-\textbf{BIOS}, takes over. It initializes the hardware, runs a quick
-self-test, and then tries to boot: it reads the first 512 bytes of the
-boot disk (the \textbf{MBR}, Master Boot Record) into RAM at address
-\texttt{0x7C00} and jumps there. The CPU starts in real mode: a
-compatibility mode inherited from the 8086 of 1978, in which the CPU acts
-like a 16-bit machine that can only directly address about 1~MB of memory.
-Real mode also gives programs access to the BIOS's own routines through
-software interrupts: \texttt{int 0x10} prints characters,
-\texttt{int 0x13} reads disk sectors, and so on. \texttt{mboot}'s stage-1
-bootloader lives entirely in this world: it uses those BIOS services to
-read the rest of the system off the disk before leaving real mode behind.
-
-\subsection*{A.3 Protected mode, the GDT, and rings}
-
-The Intel 80386 (1985) introduced protected mode: 32-bit addresses
-(up to 4~GB), memory protection, and privilege levels. Two structures must
-exist before the switch. The \textbf{GDT} (Global Descriptor Table)
-describes memory segments; \texttt{mboot} uses flat segments that
-span all of memory, so segmentation does nothing interesting, but the
-CPU refuses to enter protected mode without it. The switch itself is three
-steps: disable interrupts, load the GDT, set bit \texttt{PE} of control
-register \texttt{CR0}; then a far jump is needed to load the new code
-segment and flush the CPU's instruction pipeline. Protection comes in four
-privilege rings: ring~0 is the kernel, ring~3 is user code.
-\texttt{mboot} deliberately runs everything in ring~0: proper user mode
-requires extra bookkeeping whenever the
-CPU crosses between rings, including a \textbf{TSS} (Task State Segment)
-that tells the CPU which stack to use when an interrupt arrives while the
-kernel is running. I judged that bookkeeping out of scope for this
-project (it is listed under Known limitations), and it is a trade-off
-I would make again.
-
-\subsection*{A.4 Paging: virtual memory}
-
-In protected mode the addresses used by code (virtual addresses)
-can differ from the real RAM addresses (physical addresses). Paging
-is the hardware that performs the translation: the CPU splits each virtual
-address into a page number and a small offset, and looks the page number up
-in tables held in RAM. The physical address of the top table sits in
-control register \texttt{CR3}. Each entry can point a 4~KiB page at any
-physical page and carries flags (present, writable, user-accessible). The
-386 also supports huge 4~MiB pages (the \textbf{PSE} feature),
-which \texttt{mboot}'s kernel uses to map all of physical memory 1-to-1
-with only 1024 entries, an identity map where every virtual
-address equals the physical one, so the kernel can keep using ordinary
-pointers. Each user process gets its own page directory, so two programs
-see different memory at the same addresses and cannot corrupt each other.
-The highest bit of \texttt{CR0} switches paging on; from that moment every
-single address the CPU touches goes through the tables.
-
-\subsection*{A.5 Interrupts, the PIC, the timer, and system calls}
-
-The CPU can be interrupted at any moment. There are two kinds.
-Exceptions are synchronous: the CPU itself reports a problem, like a
-division by zero or access to a page that is not present. Hardware
-interrupts are asynchronous: devices raise electrical lines when they need
-attention; those lines are wired to the \textbf{PIC} (8259 interrupt
-controller), which tells the CPU which interrupt fired. Both kinds are
-set up through the \textbf{IDT} (Interrupt Descriptor Table), a table of
-256 entries mapping vector numbers to handler functions, the interrupt
-analogue of the GDT. The PIC's 15 usable lines overlap the exception
-range, so \texttt{mboot} remaps them to vectors \texttt{0x20}--\texttt{0x2F}.
-One device matters more than any other: the \textbf{PIT}, a timer chip
-from 1982, which raises interrupt~0 roughly 1000 times a second in
-\texttt{mboot}. That heartbeat is what allows the scheduler to preempt the
-current task and run another. User programs talk to the kernel the same
-way: they execute the instruction \texttt{int 0x80} with the wanted system
-call number in \texttt{EAX} and arguments in the other registers
-(Annex~\ref{annex:syscalls}).
-
-\subsection*{A.6 Talking to hardware}
-
-Devices are driven two ways. With memory-mapped I/O, a device's
-registers appear at ordinary physical addresses. The e1000 network card
-and the VGA text buffer at \texttt{0xB8000} work like this. With
-port I/O, there is a separate 64K address space addressed by the
-dedicated \texttt{in}/\texttt{out} instructions: the PIT, PIC, keyboard
-controller, serial port, and disk drive live there. Disk data can be moved
-by DMA (the device writes RAM by itself) or by PIO (the CPU copies each
-word through ports); \texttt{mboot} uses PIO only: simple and slow, but
-correct.
-Devices are discovered by walking the \textbf{PCI} bus, which exposes each
-card's identity (vendor and device IDs) and where its registers sit (Base
-Address Registers).
-
-\subsection*{A.7 Glossary of terms used in this report}
-
-\begin{center}
-\setlength{\tabcolsep}{6pt}
-\begin{tabular}{@{}lp{10.6cm}@{}}
-\toprule
-\textbf{Term} & \textbf{Meaning} \\
-\midrule
-BIOS & Firmware that boots the PC and offers low-level services in real mode \\
-MBR & Master Boot Record: the first 512 bytes of the disk; the first code to run \\
-GDT & Global Descriptor Table: describes segments and privilege levels \\
-IDT & Interrupt Descriptor Table: maps interrupt vectors to handlers \\
-TSS & Task State Segment: holds the kernel stack pointer for ring transitions \\
-PIC & 8259 interrupt controller: routes device interrupts to the CPU \\
-PIT & 8253/8254 timer chip: the system's heartbeat \\
-IRQ & One hardware interrupt line from a device \\
-E820 & BIOS service that reports which RAM regions physically exist \\
-A20 line & Address line that unlocks RAM above 1~MiB; must be enabled by hand \\
-Paging & Hardware virtual memory; \texttt{CR3} holds the table root address \\
-PSE & The 4~MiB ``huge page'' extension used by the kernel identity map \\
-Ring 0 & The highest privilege level \\
-PIO & Programmed I/O: the CPU copies device data through ports \\
-LBA28 & A 28-bit disk addressing scheme (disks up to 128~GiB) \\
-VGA text & The 80$\times$25 character screen, backed by memory at \texttt{0xB8000} \\
-UART & Serial port (16550 chip); \texttt{mboot} writes its log there \\
-ELF & The executable file format Linux uses, and the one \texttt{mboot} loads \\
-Syscall & A request for a kernel service, via \texttt{int 0x80} \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\clearpage
-\section*{Annex B: \texttt{mboot}'s memory map}
-\annexlabel{annex:memory}{B}
-\addcontentsline{toc}{section}{Annex B: mboot's memory map}
-
-None of these addresses are arbitrary; each one is fixed by a piece of
-code (\texttt{stage1/boot.asm}, \texttt{stage2/loader.c}, or
-\texttt{link.ld}). Some values were cross-checked against a real boot log
-in QEMU.
-
-\begin{center}
-\begin{tabular}{@{}llp{9.2cm}@{}}
-\toprule
-\textbf{Address} & \textbf{Set by} & \textbf{What lives there} \\
-\midrule
-\texttt{0x00000}--\texttt{0x004FF} & BIOS & Real-mode interrupt table and BIOS data (left untouched) \\
-\texttt{0x7C00} & BIOS & Stage-1 bootloader (the 512-byte MBR) \\
-\texttt{0x10000} & \texttt{link.ld} & Kernel image: code, constants, data, zeroed BSS \\
-\texttt{0x70FF0} & stage 1 & Count of E820 memory-map entries (16-bit) \\
-\texttt{0x71000} & stage 1 & The E820 memory map itself (read by the allocator) \\
-\texttt{0x90000} & stage 1 & Initial stack, set when entering protected mode \\
-\texttt{0xB8000} & hardware & VGA text framebuffer (80$\times$25 characters, 2 bytes each) \\
-\texttt{0x100000}+ & E820 & Extended RAM; the heap uses the largest usable region \\
-\texttt{0x105000} & kernel & Page directory (CR3), 4~KiB-aligned (example from a real boot) \\
-\texttt{0xFEBC0000} & PCI/e1000 & Memory-mapped registers of the network card (BAR0) \\
-\texttt{0x47000000}, \texttt{0x50000000} & ELF loader & Fixed base address per program (\texttt{getty}, \texttt{lua}; \texttt{lua.elf} occupies 159~KiB); every process gets its own isolated copy \\
-above the image & scheduler & The 64~KiB user stack of each process \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-The layout has two halves with very different histories: below about
-1~MiB, the legacy real-mode world the BIOS set up when the machine
-started (which is why the kernel sits at \texttt{0x10000}, safely above
-the BIOS structures, since \texttt{0x1000}, its first home, was not); and the
-high addresses near half a gigabyte, where user programs are linked and
-isolated from each other by per-process page tables.
-
-\clearpage
-\section*{Annex C: System call reference}
-\annexlabel{annex:syscalls}{C}
-\addcontentsline{toc}{section}{Annex C: System call reference}
-
-System calls are invoked with the instruction \texttt{int 0x80}: the
-syscall number goes in \texttt{EAX}, arguments in \texttt{EBX},
-\texttt{ECX}, \texttt{EDX}, \texttt{ESI}, \texttt{EDI} (the classic Linux
-i386 convention), and the result comes back in \texttt{EAX}. The numbers
-were borrowed from Linux where such a syscall exists (\texttt{exec} is
-\texttt{execve}'s number), so familiar muscle memory transfers; the socket
-calls start at 300 to leave room for future POSIX numbers.
-
-\begin{center}
-\setlength{\tabcolsep}{5pt}
-\begin{tabular}{@{}clp{5.9cm}p{5.0cm}@{}}
-\toprule
-\textbf{\#} & \textbf{Name} & \textbf{Arguments} & \textbf{Returns} \\
-\midrule
-1 & \texttt{exit} & EBX = exit code & never returns \\
-2 & \texttt{fork} & --- & 0 in the child, child's PID in the parent \\
-3 & \texttt{read} & EBX = fd, ECX = buffer, EDX = count & bytes read, or $-1$ \\
-4 & \texttt{write} & EBX = fd, ECX = buffer, EDX = count & bytes written (fd 1 is also mirrored to serial) \\
-5 & \texttt{open} & EBX = path & file descriptor, or $-1$ \\
-6 & \texttt{close} & EBX = fd & 0 (fds 0--2 cannot be closed) \\
-7 & \texttt{waitpid} & EBX = child PID & child's exit code, or $-1$ \\
-11 & \texttt{exec} & EBX = path, ECX = argv, EDX = argc, ESI = tty ($-1$ = current) & never returns on success, $-1$ on failure \\
-54 & \texttt{ioctl} & EBX = fd, ECX = request, EDX = arg & result; only \texttt{TIOCSCTTY} is implemented \\
-63 & \texttt{dup2} & EBX = old fd, ECX = new fd & new fd, or $-1$ \\
-300 & \texttt{socket} & EBX = domain, ECX = type, EDX = protocol & file descriptor, or $-1$ \\
-301 & \texttt{bind} & EBX = fd, ECX = address, EDX = length & 0, or $-1$ \\
-302 & \texttt{sendto} & EBX = fd, ECX = buffer, EDX = length, ESI = destination, EDI = length & bytes sent, or $-1$ \\
-303 & \texttt{recvfrom} & EBX = fd, ECX = buffer, EDX = length, ESI = source (out), EDI = pointer to length & bytes received, or $-1$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\section{Initial Idea and Goals}
-\label{sec:goals}
-
-I arrived at the idea after reading about OS development and looking at small hobby
-kernels. I initially wanted to build something that could run user programs
-and maybe a shell. After getting a few early demo programs of my own running
-(small programs that showed the growing kernel could load a file from
-disk and execute it) I realized that the most interesting and testable
-goal was to run a real language runtime. I
-chose Lua 5.5.0 specifically because it was the newest release at the time
-(it came out on 22 December 2025), it is
-designed to be embedded and portable, and its source tree is small enough to
-read and understand. I also liked that Lua is used in real products (games,
-embedded systems, web servers via OpenResty), so it was not a toy.
-
-My original goals were:
-\begin{enumerate}[nosep]
-  \item Boot from BIOS into 32-bit protected mode.
-  \item Set up a GDT, IDT, and basic interrupt handling.
-  \item Implement memory management (paging and a heap allocator).
-  \item Read files from a FAT16 disk.
-  \item Load and run ELF executables.
-  \item Provide a minimal C library for user programs.
-  \item Build Lua 5.5.0 against that C library and run it.
-\end{enumerate}
-
-Goals that were added later, as the project grew, included a preemptive
-scheduler with \texttt{fork}/\texttt{exec}/\texttt{waitpid}, a VFS (virtual
-file system) layer (a single interface through which files, terminals,
-and sockets all look like open files), multiple TTYs, a VGA text-mode
-console, a serial port for logging, a PCI bus
-driver, an Intel e1000 network driver, and a small TCP/IP-style network stack
-(Ethernet, ARP, IPv4, ICMP, UDP). These were not part of the original plan;
-they emerged because I wanted to see how far I could push the system and
-because some of them (like a scheduler) were needed to run multiple Lua
-processes.
-
-The final implementation differs substantially from the original plan in
-scope, but not in spirit. I did not set out to build a network stack or a
-multi-TTY console. I set out to build a system that could run Lua, and
-ended up building a small operating system around that goal that went
-further than the plan ever did. Table~\ref{tab:goals} in Section~\ref{sec:results} maps each of
-these original goals to its final outcome.
-
-\section{Planning Process}
-\label{sec:plan}
-
-I planned the project as a dependency chain. An operating system is
-layered, and each layer depends on the ones below it. The chain I followed
-was roughly:
-
-\begin{enumerate}[nosep]
-  \item Get code executing (bootloader, protected mode).
-  \item Establish the CPU environment (GDT, IDT, interrupts).
-  \item Initialize memory (E820 map, heap allocator, paging).
-  \item Initialize hardware and basic I/O (PIC, PIT, serial, VGA, keyboard).
-  \item Load programs (ATA disk, FAT16, ELF loader).
-  \item Provide the environment Lua needs (C library, syscalls, process).
-  \item Build and integrate Lua.
-  \item Execute Lua code.
-\end{enumerate}
-
-The git history shows this progression clearly. The first commit
-(\texttt{9234416}, September 2025) was a bootloader project with a stage-1
-MBR, a stage-2 loader, disk I/O, and serial output. Over the next few
-months I added interrupt handling, a keyboard driver, a memory allocator,
-paging, a FAT16 driver, a VFS layer, an ELF loader, and a syscall interface.
-The scheduler was first attempted in September 2025
-(\texttt{aa1d32a}), then removed (\texttt{2a0b759}, October 2025) because
-it was buggy and I did not have time to fix it, and re-implemented from
-scratch in July 2026 (\texttt{cca70b5}) once I had a better understanding
-of what I needed (see Section~\ref{sec:blocking}).
-
-My original plan changed in several important ways. I initially tried to
-build the kernel as a position-independent executable (PIE)
-(\texttt{e585177}, November 2025), but I dropped that plan in favor of
-paging with a fixed load address (\texttt{8405dad}) because paging gave me
-memory isolation and a simpler mental model. I also originally planned to
-keep everything in the kernel, but I later moved the init system into
-userspace (\texttt{ce6d919}, August 2026) so that user programs could manage
-their own processes. The network stack was not planned at all; it appeared
-in October 2025 (\texttt{03ddbb0}) as an experiment and grew into a
-full IPv4/UDP/ICMP implementation.
-
-For research, I relied on the sources listed in the References section and
-in the repository's \texttt{SOURCES.md}. The
-Intel 64 and IA-32 Software Developer's Manual was my normative reference
-for CPU behavior (GDT, IDT, paging, TSS). The OSDev Wiki provided practical
-guides for the boot process, the E820 memory map, the PIC, the PIT, and
-ATA PIO mode. The Microsoft FAT specification and the ELF specification
-were essential for the filesystem and loader. For networking, I read
-RFC~791 (IP), RFC~826 (ARP), RFC~768 (UDP), and RFC~792 (ICMP), plus the
-Intel e1000 datasheet. For Lua, I read the Lua 5.5 Reference Manual and the
-Lua source itself.
-
-\section{How the System Works}
-\label{sec:arch}
-
-This section uses the concepts introduced in
-Annexes~\ref{annex:x86} and~\ref{annex:memory}, which sit at the front of
-the report so that this part of the text can stay short. The boot flow from
-power-on to Lua execution is:
-
-\begin{lstlisting}[language={},caption={Boot flow from power-on to the Lua REPL},label={lst:bootflow}]
-Machine starts (BIOS, 16-bit real mode)
-      |
-      v
-stage1/boot.asm  (MBR @ 0x7C00)
-  - save boot drive, clear screen
-  - detect memory via int 0x15 E820
-  - load kernel.bin sectors via int 0x13
-  - enable A20, load GDT, enter protected mode
-    (flat segments, stack at 0x90000)
-      |
-      v
-stage2/start_loader.asm  (trampoline @ 0x10000)
-  - jump straight into loader_start()
-      |
-      v
-stage2/loader.c  (kernel init)
-  - mask PIC, remap to 0x20/0x28, init IDT
-  - install exception ISRs, init PIT (~1000 Hz)
-  - enable FPU, init keyboard, serial, CPUID
-  - init allocator from E820 map
-  - init TTYs, enable 4 MiB identity paging
-  - enumerate PCI, init network
-  - init GDT + TSS, init scheduler
-  - init FAT16, spawn /init.elf
-      |
-      v
-userspace: init -> getty x4 -> lua.elf
-\end{lstlisting}
-
-The BIOS loads the first sector of the disk (the MBR) to physical address
-\texttt{0x7C00} and jumps to it in 16-bit real mode. My stage-1 bootloader
-(\texttt{stage1/boot.asm}) saves the boot drive number from \texttt{DL},
-clears the screen with BIOS interrupt \texttt{0x10}, and calls the E820
-memory detection routine (\texttt{int 0x15}, \texttt{EAX=0xE820}) to build a
-memory map at \texttt{0x71000}. It then loads the kernel binary
-(\texttt{kernel.bin}) from the sectors after the MBR using BIOS disk
-services (\texttt{int 0x13}, \texttt{AH=0x02}), enables the A20 line via
-port \texttt{0x92}, loads a small GDT, and switches to protected mode by
-setting \texttt{CR0.PE}.
-
-Entering protected mode, stage 1 already sets the segment registers to a
-flat 32-bit data segment and puts the stack at \texttt{0x90000}; it then
-calls the kernel image at \texttt{0x10000}, where the trampoline
-(\texttt{stage2/start\_loader.asm}) jumps straight into
-\texttt{loader\_start()} in \texttt{stage2/loader.c}. The kernel
-initialization routine masks all PIC interrupts, remaps the 8259 PIC to
-vectors \texttt{0x20}/\texttt{0x28}, initializes the IDT, installs
-exception handlers, initializes the PIT (divisor 1193, roughly 1000~Hz),
-enables the FPU, and sets up the keyboard and serial port. It then
-initializes the heap allocator from the E820 map, initializes the TTY
-layer, and enables 4 MiB identity paging. After that it enumerates PCI
-devices, initializes the network interface, sets up the GDT with a TSS,
-and initializes the scheduler. Finally it mounts the FAT16 filesystem and
-spawns the first user program, \texttt{/init.elf}.
-
-The disk image (\texttt{image.sh}) contains the boot binary in the first
-partition and a FAT16 filesystem in the second partition. The FAT16
-partition holds the user programs: \texttt{init.elf}, \texttt{getty.elf},
-\texttt{lua.elf}, and various test programs. The \texttt{init} program
-spawns \texttt{getty} on each of four TTYs. \texttt{Getty} is a small
-program in the Unix tradition that opens a terminal and starts whatever
-runs on it; in \texttt{mboot} it simply executes \texttt{lua.elf}, giving
-a Lua REPL on each terminal. Four terminals running Lua at once,
-switched with Alt+F1 through Alt+F4, are the most visible proof that the
-scheduler really does preempt and rotate between processes
-(Section~\ref{sec:sched}). Every important address in this layout (where
-the bootloader sits, where the kernel is linked, where user programs
-live) is collected in one table in Annex~\ref{annex:memory}.
-
-\section{Interesting Parts of the Code}
-
-\subsection{Bootloader: \texttt{stage1/boot.asm}}
+\section{From boot to a Lua prompt}
 \label{sec:boot}
 
-The bootloader is the first code that runs, and it has to work in 16-bit
-real mode with only 512 bytes. The most interesting part is the transition
-to protected mode:
+\subsection{What the machine starts with}
 
-\begin{lstlisting}[language={[x86masm]Assembler},caption={Protected mode transition in stage1/boot.asm}]
-switch_to_pm:
-	cli
-	in al, 0x92
-	or al, 2
-	out 0x92, al
-	lgdt [gdt_descriptor]
+The target is a PC-style machine with BIOS firmware. QEMU supplies that
+machine during development. The BIOS loads the first disk sector at
+address \code{0x7C00}; the code in \code{stage1/boot.asm} then loads the
+kernel, obtains a BIOS memory map, and enters 32-bit protected mode.
+Protected mode is the processor mode used by the kernel, and the Global
+Descriptor Table (GDT) supplies its segment descriptors.
 
-	mov eax, cr0
-	or eax, 0x1
-	mov cr0, eax
+The bootloader loads the kernel at \code{0x10000}, matching the address in
+\code{link.ld}. It enables the A20 address line, loads the GDT, sets the
+protected-mode bit in the processor's control register, and uses a far
+jump to enter the new code segment. It then sets up the segment registers
+and an initial stack at \code{0x90000} before calling the kernel.
 
-	jmp CODE_SEG:init_pm
+The kernel entry in \code{stage2/start_loader.asm} jumps to
+\code{loader_start}. It does not load Lua directly. The kernel first
+prepares the facilities that a separate program will need.
+
+\par\medskip
+\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[caption={The current startup path.}]
+BIOS
+  -> stage1 bootloader
+  -> 32-bit kernel entry
+  -> interrupts, timer, memory, devices, scheduler, FAT16
+  -> /init.elf
+       -> /getty.elf on terminal 1 -> /lua.elf
+       -> /getty.elf on terminal 2 -> /lua.elf
+       -> /getty.elf on terminal 3 -> /lua.elf
+       -> /getty.elf on terminal 4 -> /lua.elf
 \end{lstlisting}
+\end{minipage}
+\par\medskip
 
-This sequence disables interrupts, enables the A20 line (which allows
-access to memory above 1~MiB), loads the GDT, and sets the PE bit in
-\texttt{CR0}. The far jump \texttt{jmp CODE\_SEG:init\_pm} is required to
-flush the CPU pipeline and load the new code segment selector. I
-encountered a bug here early on: the kernel load address conflicted with
-other low-memory data and had to be moved
-(Section~\ref{sec:loadaddr}).
+\subsection{Preparing the kernel}
 
-\subsection{Linker script: \texttt{link.ld}}
-\label{sec:linker}
+In \code{stage2/loader.c}, initialization begins with the interrupt
+controller and interrupt tables. The Interrupt Descriptor Table (IDT)
+connects interrupt numbers to handlers. The Programmable Interrupt
+Controller (PIC) routes device interrupts, and the Programmable Interval
+Timer (PIT) supplies the regular interrupt used for scheduling. Its
+configured divisor is 1193, giving approximately 1000 ticks per second.
 
-The kernel is linked at a fixed physical address:
+The kernel also initializes floating-point support, keyboard input,
+serial output, CPU information, the memory allocator, and the terminal
+layer. Paging is then enabled, PCI devices are enumerated, and the network
+configuration is initialized. After GDT/TSS and scheduler setup, the
+kernel initializes FAT16 and asks the ELF loader to start \code{/init.elf}.
+The remaining kernel loop uses \code{hlt} while waiting for interrupts.
 
-\begin{lstlisting}[language={},caption={link.ld}]
+This order reflects dependencies in the implementation. Page tables need
+allocated memory. Programs need a loader and a readable disk. Terminal
+sessions need task and file-descriptor support. A fault in one of these
+parts can appear much later, when Lua finally uses it.
+
+\subsection{Starting the terminal sessions}
+
+The separate \code{init} program forks four children. Each child selects
+a terminal and executes \code{getty.elf}. Getty prints a login label and
+executes Lua. Despite its name and label, it does not authenticate a user
+or implement a login service. The initial process remains in a loop; it
+does not supervise or restart sessions that exit.
+
+The keyboard driver recognizes Alt+F1 through Alt+F4 to change the visible
+terminal. Each terminal has its own input and display state. Lua's prompt
+is a read-eval-print loop: it reads an expression or statement, evaluates
+it, and prints a result or an error.
+
+Throughout this report, a \emph{user program} means a separately built and
+loaded application such as Lua or \code{init}. It does not mean the CPU
+runs that application at a restricted privilege level. All tasks in the
+current implementation run at ring~0, the same privilege level as the
+kernel. This is an important limit on the system's protection.
+
+\section{The kernel facilities behind the prompt}
+\label{sec:kernel}
+
+\subsection{Memory allocation and paging}
+
+There are two different allocators. The kernel allocator in
+\code{stage2/mem.c} uses the BIOS E820 memory map to select a usable RAM
+region. It advances an allocation pointer when it needs new space and
+maintains a free list for released blocks, with splitting and coalescing.
+It is used for structures such as task records, file buffers, and page
+tables. The much smaller allocator linked into applications is described
+in Section~\ref{sec:lua}; its limitations are different.
+
+Paging translates a program's virtual addresses into physical addresses.
+The initial kernel page directory uses 4~MiB pages to identity-map the
+32-bit address space: the virtual and physical addresses are equal.
+This mapping does not mean that 4~GiB of RAM is actually present.
+
+A new process begins with a copy of that page directory. Where it needs
+its own program memory, the kernel replaces the relevant large-page
+mapping with a table of 4~KiB pages. This lets different instances of Lua
+use the same linked addresses while referring to different physical pages.
+Switching the page-directory address in \code{CR3} selects the mappings
+for the next task.
+
+This provides useful separation of program data, but not a security
+boundary. The shared kernel mappings remain accessible, and all tasks
+have ring~0 privileges. Marking application pages with \code{PAGE_USER}
+does not, by itself, protect the kernel from those tasks. The TSS exists,
+but its kernel-stack field is not used for a ring~3-to-ring~0 transition
+because no application currently enters ring~3.
+
+\subsection{Scheduling and process operations}
+\label{sec:scheduler}
+
+The scheduler keeps tasks in a circular linked list. Each task record
+contains a saved stack pointer, a state, a process identifier, a page
+directory, terminal information, and a file-descriptor table. Tasks can
+be ready, running, blocked, or exited.
+
+On a timer interrupt, \code{scheduler_tick} saves the current interrupt
+frame and selects the next runnable task. The assembly interrupt path
+restores registers from the selected frame and returns to that task.
+This is preemptive round-robin scheduling: a task does not have to call a
+yield function for the timer to interrupt it. There are no learned weights
+or user-dependent priorities.
+
+Blocking handles a different problem. A task waiting for terminal input
+or a busy disk lock can stop being runnable until the relevant event
+wakes it. This avoids keeping every waiting task in a polling loop,
+although some parts of the OS still poll hardware or busy-wait.
+
+The process interface includes three familiar operations:
+\begin{itemize}
+  \item \code{fork} creates a task and copies application pages marked for
+  cloning. The child receives zero as the result; the parent receives its
+  child's process identifier. This is copying, not copy-on-write.
+  \item \code{exec} replaces the current task's program image and startup
+  frame. A successful call continues in the new program rather than
+  returning to the old one.
+  \item \code{waitpid} waits for a specified task and returns its exit
+  code. This is a small custom interface, not the full POSIX interface
+  with a status pointer and options.
+\end{itemize}
+
+The presence of these operations is useful, but process management remains
+incomplete. Exited task records are not fully reaped, and page-directory
+cleanup does not release all the physical allocations associated with a
+process. Repeatedly creating or replacing programs can therefore consume
+memory that is not recovered.
+
+\subsection{Storage, files, and executable loading}
+
+The disk driver reads ATA sectors using programmed I/O (PIO): the CPU
+transfers data through device ports. A lock serializes access so that two
+tasks do not issue overlapping command sequences. Tasks can block while
+waiting for that lock, but the task performing a transfer polls the ATA
+status register. Some polling has a timeout; the initial busy-wait helper
+has no timeout. Disk failure handling is consequently limited.
+
+The image-building script places the boot code and kernel before a FAT16
+partition, then copies executables and demonstration files into that
+partition. The kernel's FAT16 driver reads files and includes long-filename
+handling. Its ordinary open operation looks up a filename in the root
+directory; it is not a general implementation of nested path traversal.
+Filesystem writes return failure. Writing text to a terminal is supported,
+but that is a different operation from saving a file on disk.
+
+The virtual filesystem (VFS) provides a common interface for disk files,
+terminal devices, and sockets. A program uses a small integer file
+descriptor rather than calling each driver directly. This is also how
+\code{/dev/cpuinfo} exposes CPU information to programs through a file-like
+interface.
+
+The ELF loader reads an executable and gathers its loadable segments.
+Task-creation code allocates memory, copies segment contents, and prepares
+the entry stack. The normal current path goes through
+\code{create_user_task_from_segments} or \code{scheduler_exec_replace};
+the older ELF trampoline is not the startup mechanism used by these paths.
+The application entry code in \code{user/src/crt0.s} reads the argument
+count and argument vector from the stack, calls \code{main}, and passes
+its return value to \code{exit}.
+
+This loader serves executables built for the project. It does not provide
+a dynamic linker or validate every possible ELF input. It also skips
+loadable segments below \code{0x01000000}, an implementation-specific
+restriction rather than an ELF rule. Sharing ELF as a file format with
+Linux is not enough to run Linux applications.
+
+\subsection{Input, output, and networking}
+
+The console combines VGA text output, PS/2 keyboard input, and four virtual
+terminals. Serial output supplies kernel diagnostics. Successful
+\code{write} system calls also copy their output to serial, which makes
+application activity visible in the same log. This duplication is useful
+for debugging but can interleave output from several tasks.
+
+Networking is a separate substantial part of the project. PCI discovery
+locates devices, and the e1000 driver manages transmit and receive
+descriptors and packet buffers. Unlike the ATA PIO path, the network
+controller uses DMA to transfer packet data. It would be inaccurate to
+say that the whole system uses no DMA.
+
+The network code implements Ethernet, ARP, IPv4, ICMP echo handling, UDP,
+and a small socket interface. These are the protocols relevant to the
+included ping, UDP echo, and remote-Lua demonstrations. The protocol
+references are listed in the bibliography.\cite{rfc791,rfc826,rfc768,rfc792}
+The configuration is fixed in \code{stage2/net/net.c}: address
+\code{10.0.2.15}, netmask \code{255.255.255.0}, and gateway
+\code{10.0.2.2}, matching the intended QEMU user-network setup.
+
+There is no TCP implementation, DHCP client, or DNS resolver. Fragmented
+IPv4 packets are rejected rather than reassembled. These limits make
+``basic IPv4 networking'' a more accurate description than a complete
+TCP/IP stack. The current startup code initializes the network but leaves
+the demonstration servers to be launched separately.
+
+
+\section{A closer look at the implementation}
+\label{sec:walkthrough}
+
+The previous sections describe the parts of the system. The following
+walkthroughs explain some of the connections between them: how an address
+chosen by the linker reaches the CPU, how a saved stack becomes a running
+task, and how an ordinary file operation reaches a device.
+
+\subsection{The bootloader and linker must agree}
+
+The linker gives symbols addresses when it combines the kernel's object
+files. The bootloader independently decides where to place the resulting
+bytes. Those decisions must match. In \code{mboot}, the relevant linker
+script is short:
+
+\par\medskip
+\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[caption={The kernel linker script, link.ld.}]
 OUTPUT_FORMAT(elf32-i386)
 ENTRY(_start)
-
 SECTIONS
 {
     . = 0x10000;
-
     .text : { *(.text*) }
     .rodata : { *(.rodata*) }
     .data : { *(.data*) }
     .bss : { *(.bss*) *(COMMON) }
 }
 \end{lstlisting}
+\end{minipage}
+\par\medskip
 
-I needed the kernel at a known address because the bootloader loads it to
-\texttt{0x10000} and jumps there. The linker script itself is simple, but
-getting the address right was not: the original link address at
-\texttt{0x1000} caused real conflicts in low memory
-(Section~\ref{sec:loadaddr}).
+The location counter starts at \code{0x10000}. The script then places code,
+read-only data, initialized data, and zero-initialized storage in sequence.
+The build converts the linked ELF kernel into a flat binary, which the
+bootloader includes after its first sector. At that point the bootloader
+is loading bytes; it is not using the application ELF loader to interpret
+kernel program headers.
 
-\subsection{Kernel initialization: \texttt{stage2/loader.c}}
-\label{sec:loader}
+The BIOS disk-read interface used here takes a segment and offset for its
+destination. Setting \code{ES} to \code{0x1000} and the offset to zero
+selects physical address \code{0x10000} in real-mode addressing. Once in
+protected mode, the bootloader calls that same numerical address through
+flat segments. The entry stub then jumps into C.
 
-The \texttt{loader\_start()} function is the heart of the kernel. It calls
-initialization routines in dependency order:
+The transition itself contains several instructions whose roles are easy
+to confuse:
 
-\begin{lstlisting}[language=C,caption={Excerpt from loader.c}]
-void loader_start(void) {
-  for (int i = 0; i < IRQs; ++i) {
-    pic_set_mask(i);
-  }
-
-  pic_remap();
-  idt_init();
-  install_exception_isrs();
-  pit_init();
-  enable_fpu();
-  install_keyboard();
-  init_serial();
-  cpuid_init();
-
-  e820_entry_t *mem_map = E820_TABLE_ADDR;
-  uint16_t entry_count = *E820_ENTRY_COUNT_ADDR;
-  init_alloc(entry_count, mem_map);
-  tty_init();
-  paging_init();
-
-  pci_enumerate();
-  net_init();
-  gdt_init();
-  scheduler_init();
-  pic_clear_mask(0);
-  install_irq(0, NULL);
-  uint32_t esp;
-  asm("mov %%esp, %0" : "=r"(esp));
-  tss_set_stack(esp, GDT_DATA_SEG);
-
-  fat16_init();
-
-  char *argv[] = {"init", NULL};
-  int argc = 1;
-
-  INFO("MAIN", "Starting init...");
-  if (spawn_elf("/init.elf", argc, argv, -1) < 0) {
-    while (1) {
-      asm volatile("hlt");
-    }
-  }
-
-  STI();
-  INFO("MAIN", "Init scheduled. Entering idle loop.");
-  while (1) {
-    asm volatile("hlt");
-  }
-}
+\par\medskip
+\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[caption={Excerpt from the protected-mode transition.}]
+cli
+in al, 0x92
+or al, 2
+out 0x92, al
+lgdt [gdt_descriptor]
+mov eax, cr0
+or eax, 0x1
+mov cr0, eax
+jmp CODE_SEG:init_pm
 \end{lstlisting}
+\end{minipage}
+\par\medskip
 
-The ordering here is deliberate. The PIC is masked first so that no
-interrupts fire before the IDT is ready. The allocator is initialized from
-the E820 map before paging is enabled, because paging needs to allocate a
-page directory. The TSS stack is set just before \texttt{STI()} enables
-interrupts, so that any interrupt arriving after that point finds a valid
-kernel stack. The \texttt{install\_irq(0, NULL)}
-call deliberately installs no user handler for the timer IRQ: the
-interrupt dispatcher special-cases IRQ~0 and calls the scheduler's tick
-function itself (Section~\ref{sec:sched}). The final \texttt{hlt} loop is
-the idle task; it halts the CPU until the next interrupt.
+\code{cli} disables maskable interrupts while the CPU environment is being
+changed. The port operation enables A20. \code{lgdt} tells the CPU where
+the segment descriptors are. Setting the low bit of \code{CR0} enables
+protected mode, and the far jump loads the code-segment selector for the
+new execution environment. The later segment-register and stack setup
+are also necessary; setting one control bit does not prepare a C runtime.
 
-\subsection{Memory allocator: \texttt{stage2/mem.c}}
-\label{sec:mem}
+This is a compact boot path with narrow assumptions. Its disk-loading
+routine uses BIOS cylinder/head/sector reads rather than a general loader
+that can find arbitrary kernel files. It also does not explicitly clear
+the kernel's \code{.bss}. Keeping the kernel small and using a known QEMU
+configuration made this path usable for the project, but the code does
+not justify a claim of robust booting across arbitrary PCs and disk layouts.
 
-I implemented a bump allocator with a free list. The allocator manages the
-largest usable region from the E820 map. Each block has a header with a size
-and a free flag:
+\subsection{Following one virtual address}
 
-\begin{lstlisting}[language=C,caption={Excerpt from mem.c: kmalloc}]
-void *kmalloc(uint32_t bytes) {
-  const uintptr_t ALIGN = 8;
-  if (bytes == 0)
-    return NULL;
-  uintptr_t want_size = (uintptr_t)bytes;
-  want_size = align_up_uintptr(want_size, ALIGN);
+Consider a Lua address such as \code{0x50001234}. In the non-PAE page-table
+format used by this code, the address divides into a directory index, a
+table index, and an offset. For this example those are \code{0x140},
+\code{1}, and \code{0x234}. The offset is the position within a 4~KiB page;
+the other two values select the entries used to find that page.
 
-  if (bump_next == 0) {
-    bump_next = free_ram;
-  }
+The initial identity mapping treats the whole 4~MiB region beginning at
+\code{0x50000000} as one large page. When a process needs its own memory
+there, \code{paging_map_page} creates a 4~KiB page table for that region.
+It first fills the table with mappings equivalent to the old large page,
+then changes the requested entry to the process's allocated physical page.
+Preserving the other entries is the detail behind the paging bug discussed
+later in Section~\ref{sec:problems}.
 
-  block_header_t *found = find_free_block_and_remove((uint32_t)want_size);
-  if (found) {
-    try_split_block(found, (uint32_t)want_size);
-    void *payload = (void *)((uintptr_t)found + sizeof(block_header_t));
-    memset(payload, 0, want_size);
-    return payload;
-  }
+If two Lua tasks use the address \code{0x50001234}, each task's page
+directory can direct it to a different physical page plus the same offset.
+Their machine code need not change when the scheduler switches between
+them. The scheduler changes \code{CR3}, and subsequent address translation
+uses the selected directory. The kernel's broadly shared mappings make
+that implementation convenient, while also explaining why it does not
+confine privileged applications.
 
-  uintptr_t hdr_addr =
-      align_up_uintptr(bump_next, ALIGN);
-  uintptr_t payload_addr = hdr_addr + sizeof(block_header_t);
-  uintptr_t new_bump = payload_addr + want_size;
+\subsection{How a saved stack becomes the next task}
 
-  if (new_bump > free_ram_end) {
-    ERROR("MEM", "Out of memory :(");
-    HALT();
-  }
+An interrupt needs a way to return to the interrupted code. The CPU saves
+an instruction address, code segment, and flags. The assembly entry stub
+then saves general-purpose registers and adds bookkeeping fields. The C
+handler receives a pointer to that saved frame.
 
-  block_header_t *hdr = (block_header_t *)hdr_addr;
-  hdr->size = (uint32_t)want_size;
-  hdr->free = 0;
-  hdr->next = NULL;
+The scheduling part of the timer handler is small:
 
-  bump_next = new_bump;
-
-  void *payload = (void *)payload_addr;
-  memset(payload, 0, want_size);
-  return payload;
-}
-\end{lstlisting}
-
-The kernel needs dynamic memory for task control
-blocks, page tables, file buffers, and other data structures. The allocator
-first tries to find a free block of sufficient size; if none is found, it
-bumps the allocation pointer. When a block is freed, it is added back to
-the free list and coalesced with adjacent free blocks. I encountered a bug
-early on where the allocator did not align headers correctly, causing
-memory corruption.
-
-\subsection{Paging: \texttt{stage2/paging.c}}
-\label{sec:paging}
-
-I implemented 4 MiB identity paging for the kernel and 4 KiB paging for
-user processes. The kernel page directory maps the first 4 GiB of physical
-memory to the same virtual addresses using 4 MiB pages (enabled via
-\texttt{CR4.PSE}):
-
-\begin{lstlisting}[language=C,caption={Excerpt from paging.c: paging\_init}]
-void paging_init(void) {
-  uintptr_t raw_page_directory = (uintptr_t)kmalloc(PAGE_SIZE * 2);
-  page_directory = (uint32_t *)align_up_uintptr(raw_page_directory, PAGE_SIZE);
-
-  for (uint32_t i = 0; i < PAGE_DIRECTORY_ENTRIES; ++i) {
-    uint32_t phys = i * FOUR_MIB;
-    page_directory[i] =
-        (phys & 0xFFC00000U) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_SIZE_4MB;
-  }
-
-  write_cr4(read_cr4() | 0x00000010U);
-  write_cr3((uint32_t)page_directory);
-  write_cr0(read_cr0() | 0x80000000U);
-
-  INFO("PAGING", "Enabled 4 MiB identity paging (CR3=0x%X)", read_cr3());
-}
-\end{lstlisting}
-
-I needed paging to give each user process its own address space. The
-\texttt{paging\_map\_page} function splits a 4 MiB page into 4 KiB pages
-when a user process needs finer-grained mapping; this was the source of one
-of my nastiest bugs (Section~\ref{sec:pagebug}).
-
-\subsection{ELF loader: \texttt{stage2/elf.c}}
-\label{sec:elfloader}
-
-The ELF loader reads an executable from the FAT16 filesystem, parses its
-program headers, and creates a user task:
-
-\begin{lstlisting}[language=C,caption={Excerpt from elf.c: spawn\_elf}]
-int spawn_elf(const char *path, int argc, char **argv, int tty) {
-  int file = file_open(path);
-  if (file < 0) {
-    INFO("ELF", "error: could not find %s", path);
-    return -1;
-  }
-
-  int size = fat16_get_size(file);
-  void *buf = kmalloc(size);
-  file_read(file, size, buf);
-  file_close(file);
-
-  INFO("ELF", "%s loaded (%d bytes)", path, size);
-  Elf32_Ehdr *eh = (Elf32_Ehdr *)buf;
-  if (eh->magic != ELF_MAGIC) {
-    INFO("ELF", "error: %s is not a valid ELF", path);
-    return -1;
-  }
-
-  user_segment_t *segments =
-      (user_segment_t *)kmalloc(eh->phnum * sizeof(user_segment_t));
-  int segment_count = 0;
-  Elf32_Phdr *ph = (Elf32_Phdr *)((uint8_t *)buf + eh->phoff);
-  for (int i = 0; i < eh->phnum; i++, ph++) {
-    if (ph->type != PT_LOAD)
-      continue;
-    if (ph->vaddr < 0x1000000U)
-      continue; // skip ld.lld ELF-header segment artifact at 0x400000
-    segments[segment_count++] = (user_segment_t){
-        .vaddr = ph->vaddr,
-        .filesz = ph->filesz,
-        .memsz = ph->memsz,
-        .data = (uint8_t *)buf + ph->offset,
-    };
-  }
-
-  if (segment_count == 0) {
-    INFO("ELF", "error: %s has no loadable user segments", path);
-    kfree(buf);
-    kfree(segments);
-    return -1;
-  }
-
-  return create_user_task_from_segments(eh->entry, segments, segment_count,
-                                         argc, argv, tty);
-}
-\end{lstlisting}
-
-I wrote this to load user programs from disk. The interesting decision is
-the filter \texttt{ph->vaddr < 0x1000000U}. Back then, \texttt{ld.lld}
-emitted an extra \texttt{PT\_LOAD} segment that mapped the ELF headers
-at a low address (\texttt{0x400000} in the binaries I built); loading
-that segment mapped the ELF header over low memory that the kernel also
-uses. I discovered this when user programs crashed at startup: the
-loader was copying the ELF header to a low virtual address that
-overwrote kernel data. The filter skips \emph{any} segment below
-16~MiB, which is a blunt heuristic; my user programs are all linked
-far above that (Lua at \texttt{0x50000000}, \texttt{getty} at
-\texttt{0x47000000}), and today's builds no longer emit the extra
-segment at all, but the filter stays as a safeguard. A cleaner fix
-would be to detect the header segment explicitly instead of
-relying on an address threshold.
-
-Note that the segment data is only \emph{referenced} in this function;
-\texttt{create\_\-user\_\-task\_\-from\_\-segments} copies it into freshly
-allocated per-process pages before the task runs.
-
-\subsection{Scheduler: \texttt{stage2/scheduler.c}}
-\label{sec:sched}
-
-The scheduler is a round-robin preemptive scheduler. Each task has a task
-control block (TCB) with a saved stack pointer, state, PID, page directory,
-and file descriptor table. The PIT interrupt fires roughly every
-millisecond and calls \texttt{scheduler\_tick}, which saves the current
-task's stack pointer and picks the next runnable task:
-
-\begin{lstlisting}[language=C,caption={Excerpt from scheduler.c: scheduler\_tick}]
+\par\medskip
+\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C,caption={scheduler\_tick in stage2/scheduler.c.}]
 uint32_t scheduler_tick(registers_t *r) {
   if (!current_task)
     return (uint32_t)r;
-
   current_task->esp = (uint32_t)r;
-
   if (current_task->state == TASK_RUNNING) {
     current_task->state = TASK_READY;
   }
-
   scheduler_schedule();
-
   return current_task->esp;
 }
 \end{lstlisting}
+\end{minipage}
+\par\medskip
 
-Returning a pointer is what actually performs the switch. The saved
-value is the register frame the task last saw on its stack; the
-interrupt dispatcher hands it back to the assembly stub, which loads it
-into \texttt{ESP}, pops the saved registers, and executes \texttt{iret},
-so the chosen task resumes exactly where its own last interrupt
-left off, as if the tick had happened to it. The same mechanism carries
-\texttt{fork} and \texttt{exec} into their new programs.
+The important result is the address returned to assembly. If the same task
+continues, it points at that task's frame. If another task was selected,
+it points at the other task's saved frame. The assembly stub loads this
+address into \code{ESP}, restores registers, and executes \code{iret}.
+The processor resumes at the instruction address in the selected frame.
 
-I needed a scheduler to run multiple Lua processes and to handle blocking
-operations like disk I/O and keyboard input. The \texttt{fork} system call
-clones the current task's page tables and creates a new TCB. The
-\texttt{exec} system call replaces the current task's address space with a
-new program; getting its semantics right turned into a significant
-redesign of the scheduler (Section~\ref{sec:execbug}).
+This is why saving only a process identifier would not be enough. A task
+must resume with the values that its machine instructions were using,
+including the stack on which its calls were in progress. The page
+directory must also match the resumed task. The switch is a coordinated
+change of execution state and address translation.
 
-\subsection{Syscall dispatch: \texttt{stage2/cpu/interrupts/idt.c}}
-\label{sec:syscalls}
+New tasks do not yet have a real interrupted execution to restore. The
+kernel constructs a frame with the same layout, placing the program's
+entry address where an interrupted instruction address would normally be.
+Returning through that frame starts the program for the first time.
+The argument count and pointers placed above it are then consumed by
+\code{crt0.s}.
 
-System calls use interrupt \texttt{0x80}. The \texttt{syscall\_dispatch}
-function reads the syscall number from \texttt{EAX} and arguments from
-\texttt{EBX}, \texttt{ECX}, \texttt{EDX}, \texttt{ESI}, and \texttt{EDI}:
+The frame layout also depends on privilege level. In the current ring~0
+path, the CPU does not push the extra stack-segment and stack-pointer fields
+associated with a privilege transition. Although \code{registers_t}
+declares fields for them, they must not be assumed valid in every frame.
+The fork implementation explicitly accounts for this when preparing the
+child's return path. It is an example of a C structure describing several
+possible hardware cases rather than guaranteeing that every field exists
+on every entry.
 
-\begin{lstlisting}[language=C,caption={Excerpt from idt.c: syscall dispatch}]
-uint32_t syscall_dispatch(registers_t *r) {
-  switch (r->eax) {
-  case 1: { // sys_exit
-    uint32_t exit_code = r->ebx;
-    INFO("SYSCALL", "exit(%d)", exit_code);
-    scheduler_exit_current(exit_code);
-    break;
-  }
-  case 2: { // sys_fork
-    int pid = fork_current(r);
-    r->eax = (pid >= 0) ? (uint32_t)pid : 0xFFFFFFFFU;
-    INFO("SYSCALL", "fork() = %d", pid);
-    break;
-  }
-  case 3: { // sys_read
-    uint32_t fd = r->ebx;
-    INFO("SYSCALL", "read(fd=%u, count=%u)", fd, r->edx);
-    r->eax = vfs_read(fd, r->edx, (void *)r->ecx);
-    INFO("SYSCALL", "read -> %d", r->eax);
-    break;
-  }
-  // ... write, open, close, waitpid, exec, ioctl, dup2, socket, etc.
-  }
-  return (uint32_t)r;
+\subsection{From a file descriptor to a driver}
+
+A file descriptor is an index in a task's descriptor table. It is not a
+disk sector, a memory address, or necessarily the driver's own identifier.
+The VFS translates it into an internal handle, then routes the operation
+to a disk file, a device, or a socket. This indirection lets the same
+application call operate on several kinds of destination.
+
+The \code{write} wrapper in the C library makes the first part concrete:
+
+\par\medskip
+\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C,caption={The application write wrapper.}]
+ssize_t write(int fd, const void *buf, size_t count) {
+  ssize_t ret;
+  asm volatile("int $0x80"
+               : "=a"(ret)
+               : "0"(__NR_write), "b"(fd), "c"(buf), "d"(count));
+  return ret;
 }
 \end{lstlisting}
+\end{minipage}
+\par\medskip
 
-This gives user programs access to kernel services. The syscall
-numbers follow the Linux convention where possible (e.g., \texttt{exit=1},
-\texttt{fork=2}, \texttt{read=3}, \texttt{write=4}) because I was familiar
-with it and it made the ABI easier to reason about. The complete interface
-(all 14 syscalls, with their arguments and registers) is documented
-in Annex~\ref{annex:syscalls}.
+The register constraints place the descriptor, buffer address, and count
+in \code{EBX}, \code{ECX}, and \code{EDX}. The call number occupies
+\code{EAX}. The interrupt reaches the system-call dispatcher, which calls
+\code{vfs_write}; the result is stored back in the frame's \code{EAX}.
+A software interrupt is being used as an interface even though this call
+does not cross from an unprivileged application to a privileged kernel.
 
-\section{Integrating Lua 5.5.0}
+For a terminal handle, the VFS sends characters to the selected terminal.
+For a FAT16 handle, it reaches the filesystem's write function, which
+returns failure. The application's use of the same function name does
+not imply that both destinations offer identical capabilities.
+
+Descriptor duplication is useful for the remote-Lua demonstration. That
+program creates a UDP socket and uses \code{dup2} to associate descriptors
+0, 1, and 2 with it before executing Lua. The interpreter still uses its
+normal input and output streams. The changed descriptor bindings provide
+a different underlying connection. This is a concrete use of the VFS and
+process interfaces together, although it does not turn UDP into a reliable
+byte-stream protocol.
+
+\section{Running stock Lua on the system}
 \label{sec:lua}
 
-The Lua integration was the most challenging part of the project. Going
-from ``I have a kernel'' to ``I have an environment capable of executing
-Lua'' required solving several problems.
+\subsection{What was changed, and what was not}
 
-Lua 5.5.0 is designed to be portable, but it still expects a C library and
-an operating system environment. The main dependencies are:
-\begin{enumerate}[nosep]
-  \item \textbf{Memory allocation}: Lua uses \texttt{malloc} and
-  \texttt{free} for all internal allocations.
-  \item \textbf{File I/O}: The Lua \texttt{io} library uses \texttt{fopen},
-  \texttt{fread}, \texttt{fwrite}, and related functions.
-  \item \textbf{C library functions}: Lua uses \texttt{memcpy},
-  \texttt{memset}, \texttt{strlen}, \texttt{strcmp}, \texttt{printf},
-  \texttt{strtod}, math functions, and others.
-  \item \textbf{Error handling}: Lua uses \texttt{setjmp} and
-  \texttt{longjmp} for non-local exits.
-  \item \textbf{Process control}: The \texttt{os} library uses
-  \texttt{exit}, \texttt{time}, \texttt{clock}, and \texttt{getenv}.
-\end{enumerate}
+The interpreter is upstream Lua 5.5.0. I adapted its Makefile to compile
+it for \code{i386-elf}, include my library headers, and link it statically
+with my C library and startup object. I did not rewrite the Lua parser,
+virtual machine, garbage collector, or standard libraries to fit the OS.
+The work was in the operating system and the support code around Lua.
 
-I did not modify the Lua source code itself. The Lua source tree in
-\texttt{user/lua/} is the original tar from
-\texttt{https://www.lua.org/ftp/lua-5.5.0.tar.gz}. Instead, I adapted the
-build environment. The Lua Makefile
-(\texttt{user/lua/Makefile}) compiles Lua with:
+A comparison with the official Lua 5.5.0 archive confirms that the C and
+header files contain no functional changes. Apart from the Makefile, the
+only difference is a missing trailing blank line in \code{luaconf.h}.
+Thus ``stock Lua'' describes the interpreter source, not a stock Linux
+executable or an unchanged host environment. The source distribution is
+credited separately from my project code.\cite{lua-source}
 
-\begin{lstlisting}[language={},caption={Lua build flags}]
-CFLAGS = -target i386-elf -m32 -ffreestanding -nostdlib -fno-pic -mno-red-zone \
-         -Os -Wall -Wextra -g0 -c \
-         -I. -I../include \
-         -ffunction-sections -fdata-sections \
-         -DLUA_USE_C89 -DLUAI_MAXSTACK=30000
+The build uses the following configuration options:
+
+\par\medskip
+\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+-DLUA_USE_C89 -DLUAI_MAXSTACK=30000
 \end{lstlisting}
+\end{minipage}
+\par\medskip
 
-The \texttt{-DLUA\_USE\_C89} flag tells Lua to stick to ISO C89: it
-avoids the few C99 and Windows-specific features in Lua's source (and
-the POSIX-only paths, which would not compile against my kernel), and it
-switches Lua's numbers to the largest types C89 guarantees
-(\texttt{long} and \texttt{double}) instead of C99's
-\texttt{long long}. The \texttt{-DLUAI\_MAXSTACK=30000} flag reduces the
-maximum Lua stack size from the default 1,000,000 to 30,000. I added
-this (commit \texttt{55e61ac}) after out-of-memory crashes when running
-Lua programs with deep call stacks.
+The first selects Lua's C89-compatible configuration. On this target the
+configuration uses \code{long} for Lua integers and \code{double} for
+floating-point values; \code{long} is 32 bits here. The second sets a
+maximum of 30,000 Lua stack slots. It is a limit on Lua's internal stack,
+not the size of the processor stack or an allocation of that many slots
+at startup. Each task's processor stack is separately configured as
+64~KiB in \code{inc/scheduler.h}.
 
-The mini C library (\texttt{user/src/libc.c}) provides the functions Lua
-needs. It is a freestanding implementation with no external dependencies.
-The most important parts are:
-\begin{itemize}[nosep]
-  \item \texttt{malloc}: a bump allocator over a 64 KiB static heap.
-  \item \texttt{printf}: a custom implementation that formats integers,
-  strings, and floating-point numbers and writes to a file descriptor.
-  \item \texttt{strtod}: a string-to-double converter used by Lua's
-  number parser.
-  \item \texttt{setjmp}/\texttt{longjmp}: implemented as naked assembly
-  functions to save and restore the CPU state.
-  \item Math functions: most are implemented using compiler builtins
-  (\texttt{\_\_builtin\_sin}, \texttt{\_\_builtin\_cos}, etc.), but some
-  (\texttt{sqrt}, \texttt{floor}, \texttt{ceil}, \texttt{fmod}) use x87
-  floating-point instructions via inline assembly.
-\end{itemize}
+The application is linked at \code{0x50000000}. That is a virtual address:
+the page tables supply the backing physical memory. No change to Lua's
+interpreter is needed for that arrangement.
 
-The ELF trampoline (\texttt{stage2/elf\_trampoline.asm}) builds a
-Linux-convention argument stack before jumping to the entry point:
+\subsection{The C library is part of the port}
 
-\begin{lstlisting}[language={[x86masm]Assembler},caption={elf\_trampoline.asm}]
-run_elf_with_args_asm:
-    mov ecx, [esp+4]      ; entry point
-    mov edx, [esp+8]      ; argc
-    mov eax, [esp+12]     ; argv (char**)
+The custom library in \code{user/src/libc.c} supplies string and memory
+operations, formatted output, numeric conversion, file operations,
+non-local jumps, and wrappers for system calls. A function such as
+\code{printf} ultimately reaches the kernel through \code{int 0x80}.
+The interrupt number and some system-call numbers resemble Linux i386,
+but the interface is specific to \code{mboot}.
 
-    push dword 0          ; envp[0] = NULL
-    push dword 0          ; argv terminator = NULL
+Lua's normal allocator uses \code{realloc} and \code{free}. Those functions
+are especially important because the interpreter creates and resizes
+objects throughout execution. In my library, \code{malloc} advances
+through a static 64~KiB heap, and \code{free} does nothing. Lua still runs
+its garbage collector, but releasing an object does not recover space
+from this underlying allocator. A session can exhaust its heap even if
+its script no longer retains the earlier objects.
 
-    mov esi, edx          ; esi = argc
-    shl esi, 2            ; esi = argc * 4
-    add esi, eax          ; esi = &argv[argc]
+There is also a correctness problem in \code{realloc}: it does not track
+the old block's size. Its copy length is based on the new request and
+total heap usage, so it can read beyond the old allocation. This is more
+than a missing optimization. It limits what can be claimed about the
+runtime's reliability.
 
-    mov ebx, edx          ; ebx = argc
-    test ebx, ebx
-    jz .done
+File support is similarly partial. Reading a disk file or writing to a
+terminal can work through Lua's \code{io} library, while seeking and file
+position queries return failure. Disk files cannot be created or modified.
+Time functions are mostly placeholders: \code{time} returns zero and
+\code{clock} returns an unavailable value. Environment lookup returns no
+value. The library's \code{system} function forks and executes the supplied
+path; it does not invoke a command shell or parse a command line.
 
-.loop:
-    sub esi, 4
-    push dword [esi]
-    dec ebx
-    jnz .loop
+These differences mean that unchanged Lua source does not imply that every
+Lua standard-library operation behaves as it would on a mature host OS.
+The reference manual describes the language and library interfaces; the
+host services available here are a limited implementation beneath
+them.\cite{lua-manual} Reaching the prompt was a real integration milestone,
+but it was not a full Lua conformance test.
 
-.done:
-    push edx              ; argc
 
-    jmp ecx               ; jump to entry
-\end{lstlisting}
+\subsection{Following one line of input and output}
 
-I wrote this to follow the Linux convention, so that in principle the
-same Lua binary could run unmodified on a 32-bit Linux, though I
-never tested that. The basic system calls use Linux's own numbers, so
-anything except mboot's socket calls (which start at 300 and are
-mboot-specific) would find the services it expects. The trampoline
-pushes \texttt{argc}, \texttt{argv}, and a
-\texttt{NULL} environment pointer onto the stack in the order that Linux
-expects, then jumps to the entry point. This was important because Lua's
-\texttt{main} function expects to find \texttt{argc} and \texttt{argv} on
-the stack.
+Consider entering \code{print(3/4)} at a terminal. The PS/2 keyboard sends
+scancodes, which the keyboard driver translates into characters using its
+keymap and modifier state. The terminal layer queues those characters
+for the currently visible terminal and wakes tasks waiting on it.
 
-The final step was wiring Lua into the boot sequence. The
-\texttt{loader.c} spawns \texttt{/init.elf}, which spawns
-\texttt{/getty.elf} on each TTY, and each \texttt{getty} executes
-\texttt{/lua.elf}. The Lua REPL then reads from the keyboard and writes to
-the VGA console, giving the user an interactive Lua environment.
+The terminal read path maintains a line buffer. It handles printable
+characters, backspace, and the end of the line, echoing input through the
+terminal output path. A Lua input call eventually reaches the C library's
+read wrapper and then the VFS. If there is no character to consume, the
+task can block instead of continuing to run its interpreter loop.
 
-\section{Difficulties I Encountered}
-\label{sec:difficulties}
+After the line reaches Lua, the interpreter parses and evaluates it. The
+result of this particular division is a floating-point value, so printing
+it exercises the library's number-formatting path. Output goes through
+the application's standard-output descriptor to the terminal state and
+then, when visible, to VGA. The system-call handler also mirrors successful
+writes to the serial log.
 
-The project was full of difficulties. Here are the most significant.
+Several distinct kinds of state are involved: the active display terminal,
+the task's bound descriptors, the line being assembled, the Lua execution
+state, and the saved CPU state used by scheduling. Switching the visible
+terminal changes which screen is rendered and where keyboard input is
+sent; it does not execute \code{exec} or create a new interpreter. Those
+interpreters were already started by \code{init}.
 
-\subsection{Floating-point printing crash}
-\label{sec:fp-crash}
+\section{Problems that changed the implementation}
+\label{sec:problems}
 
-Nothing in the tutorial examples survives contact with
-\texttt{print(3/4)}: the REPL printed nothing and the whole machine hung
-(commit \texttt{e66aebf}). I spent a while inside Lua's number formatting
-before realizing the fault was mine, not Lua's. My \texttt{printf} had
-no floating-point path at all. The \texttt{\_\_print\_double} function did
-not exist; calls to it went nowhere and the output buffer was corrupted
-behind them. I wrote it properly, with correct rounding and precision
-handling, and the REPL came back to life.
+The following examples are supported by changes in the repository. They
+show the kinds of mistakes involved without assigning an undocumented
+cause or duration to every debugging session.
 
-\subsection{setjmp and longjmp}
-\label{sec:setjmp}
+\subsection{A simple calculation exposed formatted-output bugs}
 
-Any Lua error goes through \texttt{setjmp} and \texttt{longjmp}, and my
-first version of them was inline assembly with input/output constraints.
-The compiler does not know that \texttt{setjmp} returns twice; it
-saved registers as if there were only one return path, and the second one
-came back to garbage. A raised error hung the system instead of unwinding
-(commit \texttt{83def47}). Both functions are now naked assembly with the
-\texttt{returns\_twice} and \texttt{noreturn} attributes, which is what
-tells the compiler to get out of the way.
+Commit \code{e66aebf} records a crash when evaluating \code{3/4} in the
+REPL. The change corrected formatted-output code, including output-buffer
+handling and floating-point formatting. The calculation itself was small;
+printing its result exercised code that earlier integer and string output
+had not adequately tested.
 
-\subsection{PIT driver bug}
-\label{sec:pit}
+This is one reason Lua was a useful application target. An interpreter
+uses many library paths in ordinary interaction. A working boot message
+says little about numeric formatting, error recovery, or memory allocation
+under a less predictable workload.
 
-The scheduler was not preempting tasks correctly, and the culprit turned
-out to be embarrassingly simple: in the PIT driver I had swapped the port
-and value arguments to \texttt{outb} (commit \texttt{5a35bd9}).
+\subsection{Recovering from Lua errors}
 
-\begin{lstlisting}[language=C,caption={The bug and the fix}]
-// Before (wrong):
-outb(0x36, PIT_COMMAND);
-outb(divisor & 0xFF, PIT_CHANNEL0);
+Lua uses non-local jumps for error handling in this C build. These save an
+execution context and later resume it without returning through every
+intermediate function. My implementation of \code{setjmp} and
+\code{longjmp} therefore had to agree with both the compiler and the x86
+calling convention.
 
-// After (correct):
+Commit \code{83def47}, recorded as a fix for Lua errors hanging, changed
+the implementations and their declarations. The current code uses naked
+assembly functions and marks \code{setjmp} as returning twice and
+\code{longjmp} as not returning. This fix illustrates a distinct test case:
+being able to evaluate valid input does not establish that the interpreter
+can recover from an error.
+
+\subsection{Programming the timer}
+
+The PIT driver had the port and value arguments to \code{outb} reversed.
+Commit \code{5a35bd9} corrected the calls. For example, the timer command
+must be sent as:
+
+\par\medskip
+\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C]
 outb(PIT_COMMAND, 0x36);
-outb(PIT_CHANNEL0, divisor & 0xFF);
 \end{lstlisting}
+\end{minipage}
+\par\medskip
 
-The effect was exactly what you would predict from a timer nobody
-programmed: interrupt 0 never fired at the rate the scheduler assumed,
-and preemption degraded with it.
+A timer configuration error affects the scheduler above it. Looking only
+at task-selection logic would miss the underlying problem: the hardware
+must first deliver interrupts at the intended rate.
 
-\subsection{Paging bug}
-\label{sec:pagebug}
+\subsection{Splitting large pages correctly}
 
-This one I found only because Lua made the symptoms legible: programs
-crashed with strange memory corruption (the same code, the same
-input, different wrong answers), which pointed at paging well before I
-found the actual line (commit \texttt{eb4e31f}). The
-\texttt{paging\_map\_page} function does not preserve the physical base
-address when splitting a 4 MiB page into 4 KiB pages:
+When a 4~MiB mapping is replaced with a table of 4~KiB mappings, the new
+entries must preserve the original physical base address. Before commit
+\code{eb4e31f}, the code used only the offset within the region. That
+incorrectly redirected mappings from higher regions into low physical
+memory. The corrected construction is:
 
-\begin{lstlisting}[language=C,caption={The fix}]
-// Before (wrong):
-((uint32_t *)table)[i] = (i << 12) | PAGE_PRESENT | PAGE_WRITABLE;
-
-// After (correct):
+\par\medskip
+\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=C]
 uint32_t phys_base = entry & 0xFFC00000U;
-((uint32_t *)table)[i] =
-    (phys_base + (i << 12)) | PAGE_PRESENT | PAGE_WRITABLE;
+for (uint32_t i = 0; i < 1024; ++i) {
+    ((uint32_t *)table)[i] =
+        (phys_base + (i << 12)) | PAGE_PRESENT | PAGE_WRITABLE;
+}
 \end{lstlisting}
+\end{minipage}
+\par\medskip
 
-Every page table entry built from a 4 MiB region above the first one was
-therefore rooted at physical address 0 plus the offset, so a process
-reading a ``mapped'' page was really reading low memory, which is
-memory the kernel and the boot structures live in.
+This preserves the existing mappings before an individual page is replaced.
+It is a small change with consequences for every process using those tables.
 
-\subsection{Making \texttt{exec} replace the current process}
-\label{sec:execbug}
+\subsection{Making exec replace the calling program}
 
-My original \texttt{exec} implementation created a new task instead of
-replacing the current one. This broke the
-calling convention: after \texttt{exec} returned, the calling program
-expected to be running the new program, but instead the old program
-continued. The fix (commit \texttt{5e1da99}) makes \texttt{exec} load the
-new program into
-the current task's page directory and reset the stack pointer and
-instruction pointer. Doing that correctly turned into a significant
-redesign of the scheduler.
+An earlier \code{exec} path spawned another task. Commit \code{5e1da99}
+introduced replacement of the current task's image and execution frame,
+and changed \code{system} to use \code{fork} followed by \code{exec} and
+\code{waitpid}.
 
-\subsection{FPU fault regression}
-\label{sec:fpu}
+The difference is observable: after a successful \code{exec}, the old
+program should not resume after the call. A parent that needs to continue
+must first create a child. The current implementation follows that basic
+model, although its resource cleanup is still incomplete. Correcting the
+control flow and completing resource management are separate pieces of work.
 
-Enabling the FPU suddenly caused a fault (commit \texttt{23c7968}), and
-the cause was my own interrupt rework rather than the FPU: hardware
-interrupts had been funneled into the exception path, and enabling the
-FPU on top of that broke interrupt delivery. The fix was to restore the
-separate legacy IRQ path (dedicated \texttt{irq.asm}/\texttt{irq.c}
-handlers instead of one merged path), after which the FPU worked
-again.
 
-\subsection{Kernel load address conflicts}
-\label{sec:loadaddr}
+\subsection{Keeping the boot addresses consistent}
 
-The kernel was originally linked and loaded at \texttt{0x1000}, which
-turned out to be too close to the bootloader's own data: kernel data
-overlapped other low-memory structures and the system crashed in confusing
-ways. I moved the kernel to \texttt{0x10000} and the E820 memory-map table
-to \texttt{0x71000} (commit \texttt{2bc7cec}) and updated the bootloader
-and the linker script to match (Sections~\ref{sec:boot}
-and~\ref{sec:linker}). This experience is also why I gave up on building
-the kernel as a position-independent executable (\texttt{e585177},
-November 2025) in favor of paging with a fixed load address
-(\texttt{8405dad}): paging gave me memory isolation and a much simpler
-mental model (Section~\ref{sec:plan}).
+Commit \code{2bc7cec} moved the kernel's link address from \code{0x1000}
+to \code{0x10000}, and moved the E820 table from \code{0x9000} to
+\code{0x71000}. The matching assembly and C definitions changed together.
+This is a useful example of a dependency that cannot be checked by the
+C compiler alone: a pointer in the kernel must agree with a buffer address
+chosen earlier by the bootloader.
 
-\subsection{Process stack size and ATA disk access race}
-\label{sec:stackata}
+The change also made the BIOS load destination explicit as a segment and
+offset. A 16-bit segment value of \code{0x1000} is not itself the same
+address as the 32-bit pointer \code{0x1000}. In this case it contributes
+\code{0x10000} to the real-mode physical address. Treating those numbers
+as interchangeable would make an apparently reasonable load address
+wrong by a factor of sixteen.
 
-User programs originally had a stack size of 4096 bytes (commit
-\texttt{d22d902}), which was too small for Lua. I increased it to 64 KiB
-after Lua programs crashed with stack overflow errors on simple recursive
-functions. The ATA disk driver was also not thread-safe (commit
-\texttt{2485a32}): when multiple tasks tried to read from the disk
-simultaneously, the driver would send conflicting commands to the disk
-controller. I fixed it by adding a mutex that serializes disk access. The
-driver also originally had no timeout on commands (commit
-\texttt{e66aebf}): a failed disk command would hang the whole system, so I
-added one.
+The commit documents the relocation, but it does not establish every
+failure scenario described in earlier accounts of the project. The
+technical lesson that can be stated directly is that loader destinations,
+linker addresses, and shared boot-data addresses form one agreement. A
+change to one side has to be carried through the others.
 
-\subsection{Task blocking}
-\label{sec:blocking}
+\subsection{Separating stack capacity from heap capacity}
 
-The original scheduler did not support blocking (commit
-\texttt{92947b1}). Tasks that needed to wait for I/O would spin in a busy
-loop, wasting CPU time. I added a blocking mechanism where tasks mark
-themselves as blocked on a wait object and are woken up when the object is
-signaled. I needed this to implement blocking reads from the keyboard and
-disk, which are essential for a responsive system.
+The task stack grew from 4096 bytes to 64~KiB in commit \code{d22d902}.
+That change provides more room for nested C calls, saved registers, and
+local variables. This matters in the current library because functions
+such as formatted output have sizeable local buffers as well as calling
+other helpers.
 
-\section{Development and Debugging Process}
-\label{sec:debug}
+It does not enlarge the separate 64~KiB application heap, and it does not
+set the maximum number of Lua values. Those are three different limits:
+the CPU stack allocated for a task, the heap from which the runtime
+allocates objects, and Lua's configured internal-stack limit. Increasing
+one does not automatically solve exhaustion of another.
 
-I developed and debugged the operating system using QEMU
-(\texttt{qemu-system-x86\_64}) as the emulator. I ran the system with
-\texttt{-serial stdio} to see kernel log messages on the host terminal and
-\texttt{-display none} to run headless. I also used the e1000 network
-driver with user-mode networking to test the network stack.
+This distinction makes debugging an out-of-memory or stack problem less
+ambiguous. The useful question is which allocation or stack operation
+failed, not just whether the program appeared to use too much memory.
+The present code still lacks the comprehensive diagnostics and protection
+that would make every such failure easy to identify.
 
-Debugging an operating system is particularly difficult because a small
-mistake can prevent the entire system from booting. If the bootloader has a
-bug, the system does nothing. If the kernel has a bug, the system crashes
-before it can print an error message. I learned to debug incrementally:
-I would make a small change, rebuild, and test. If the system did not
-boot, I would add more logging to find the point of failure.
+\subsection{Serializing disk commands after adding concurrency}
 
-I used several debugging techniques:
-\begin{itemize}[nosep]
-  \item \textbf{Serial output}: The kernel prints log messages to the
-  serial port, which I can see on the host terminal. This was my primary
-  debugging tool.
-  \item \textbf{GDB}: I added GDB debugging support (commit
-  \texttt{0004ae8}) so that I could attach GDB to QEMU and inspect the
-  system state. This was useful for examining memory and registers after
-  a crash.
-  \item \textbf{Disassembly}: I used \texttt{objdump} to disassemble the
-  kernel and understand what the compiler generated.
-  \item \textbf{Pen and paper}: I often drew diagrams of the memory layout
-  and the call stack on scrap paper to reason about what was happening.
-\end{itemize}
+A device driver that appears to work with one caller can fail when several
+tasks use it. An ATA read is a sequence of register writes and status
+checks followed by data transfers. If another task starts its own sequence
+in the middle, the two callers no longer have independent commands in
+progress on the controller.
 
-The most important lesson was that OS debugging requires patience. A crash
-can be caused by a bug in any layer, and the error message (if any) is
-often far from the actual cause. I learned to be systematic: reproduce the
-crash, add logging, form a hypothesis, test it, and repeat.
+Commit \code{2485a32} added a lock around the read routine. The lock check
+and update occur with interrupts disabled on the single CPU. If it is
+already held, the task blocks on the lock object; unlocking wakes tasks
+waiting on that object. The transfer itself is still performed by polling.
+This is how the driver coordinates access without claiming that the disk
+has become an interrupt-driven I/O implementation.
 
-\subsection{Testing}
-\label{sec:testing}
+There is a similar relationship between keyboard input and blocking.
+The terminal object is used as a wait object, and input arrival wakes
+waiters on that terminal. A wait object identifies an event or resource;
+it is not a prediction of when the task should receive more CPU time.
+These mechanisms support ordinary scheduling and synchronization, not
+the proposed learning policy.
 
-Beyond manual REPL sessions, I kept a set of small test programs on the
-FAT16 image (\texttt{test\_files/}): C programs that exercise
-\texttt{fork}/\texttt{exec}/\texttt{waitpid}, raw ICMP pings, a UDP echo
-client and server, and multi-tasking demos, plus Lua scripts that drive
-\texttt{io.open} on device files (\texttt{/dev/cpuinfo}, \texttt{/dev/tty2})
-to verify that my C library's file I/O and the TTY layer work correctly
-through Lua's \texttt{io} library. The most convincing end-to-end test
-was a full boot from the system's most feature-complete build (August
-2026): \texttt{init} brings up the network, pings a host, starts a UDP
-echo server, and then launches Lua (Figure~\ref{fig:init}). That demo
-flow was later simplified (today \texttt{init} spawns \texttt{getty}
-on each of four TTYs instead, Section~\ref{sec:arch}), but the
-screenshot still captures the widest slice of the system working
-together.
+\section{Development tools and evaluation}
+\label{sec:evaluation}
 
-\section{Results}
-\label{sec:results}
+\subsection{Building and observing the system}
 
-The final result works: an operating system that can boot
-from BIOS, load user programs from a FAT16 disk, and run Lua 5.5.0. The
-code I wrote for it (excluding the unmodified Lua source) comes to about
-9{,}100 lines: 175 lines of bootloader assembly, about 5{,}800 lines of
-kernel C and assembly, 935 lines of headers, and about 2{,}100 lines of
-userspace code (my C library and test programs). For comparison, the Lua
-interpreter itself is about 26{,}000 lines of C.
+The build uses Clang for freestanding i386 code, NASM for assembly, and
+LLVM tools for linking and binary conversion. The image script uses
+\code{mkfs.fat} and \code{mcopy} to prepare the FAT16 contents. These tools,
+QEMU, and the upstream Lua implementation are external dependencies;
+writing the OS did not mean writing the compiler, emulator, or interpreter.
 
-The system also boots fast. Measured in QEMU (\texttt{-serial stdio}),
-counting from the kernel's first serial log message to an interactive
-prompt: full kernel initialization (PIC, IDT, PIT, keyboard, serial,
-allocator, TTYs, paging, PCI, e1000, GDT/TSS, scheduler, and FAT16)
-takes about 73~ms; reading \texttt{lua.elf} (159~KiB) from the FAT16
-filesystem via PIO takes about 130~ms; and an interactive Lua prompt is
-up about 270~ms after kernel initialization begins, with all four TTYs
-running Lua within about 300~ms.
+Serial diagnostics make the startup sequence and system calls visible on
+the host. The history also records GDB support in commit \code{0004ae8}.
+Such facilities are valuable because a failure can stop the kernel before
+it can report anything through the screen. The first question is often
+which initialization step was reached, rather than which application
+function failed.
 
-Table~\ref{tab:goals} maps my original goals (Section~\ref{sec:goals}) to
-their final outcomes.
+The source tree contains focused demonstrations. \code{fork_test.c}
+prints different messages in parent and child; it is not a comprehensive
+process test. The Lua scripts exercise reading \code{/dev/cpuinfo} and
+writing to another terminal. The ping and socket programs exercise parts
+of the network interface. These are useful examples, but their presence
+in the repository alone is not evidence that every path has been tested.
 
-\begin{table}[htbp]
+
+\subsection{Using diagnostics without mistaking them for measurements}
+
+Serial output is particularly useful when the visible terminal no longer
+updates. Messages before and after an operation can narrow down where
+execution stopped. Register and memory inspection through a debugger can
+then help distinguish an invalid address, an incorrect saved frame, or a
+wait that never completes. Disassembly is also useful when the problem
+lies at the boundary between C and assembly.
+
+There is a cost to this visibility. Logging every read and write adds work
+and can alter how tasks interleave. Several tasks also share the serial
+output, so nearby messages need not describe one uninterrupted operation.
+A diagnostic transcript is valuable evidence, but its order and timing
+have to be interpreted with that concurrency in mind.
+
+A performance claim would need a separate method: a defined starting and
+ending event, a specified emulator and machine configuration, and repeated
+runs under comparable conditions. The report does not turn timestamps
+from an informal log into a boot benchmark. The short check records the
+functional results it actually observed.
+
+\subsection{A limited check of the saved disk image}
+
+For this report revision, a short QEMU check on 27 October 2026 booted the
+existing \code{image.img} with 4~GiB of guest memory and an emulated e1000
+adapter. QEMU's snapshot option kept the disk image unchanged. The serial
+log showed four Lua 5.5.0 banners and prompts. Entering
+\code{print(3/4)} on the first terminal produced \code{0.75}; after
+Alt+F2, entering \code{print(42)} produced \code{42} on the second session.
+
+That check supports the boot-to-interpreter path, basic input and output,
+a floating-point result, and terminal switching in the saved image. It
+was not a clean rebuild of the current source, a long-running stress test,
+a test of all four sessions under load, or a network test. The architectural
+descriptions elsewhere in this report come from inspecting the current
+source and history. These are different forms of evidence.
+
+No reproducible boot-time benchmark, minimum-memory measurement, or
+physical-hardware test is presented here. In particular, the 4~GiB QEMU
+configuration is a test setting, not a measured memory requirement. The
+32-bit target also does not establish compatibility with every historical
+32-bit x86 CPU: the source uses processor features beyond the original
+80386. The result described here is the QEMU development system.
+
+\subsection{Results against the goals}
+
+Table~\ref{tab:outcomes} separates the original ambitions from the revised
+application target. This makes it possible to recognize the implemented
+work without treating the change of scope as completion of the initial
+proposal.
+
+\begin{table}[H]
 \centering
-\caption{Original goals and their final outcomes}
-\label{tab:goals}
-\begin{tabular}{@{}p{4.9cm}cp{6.0cm}@{}}
+\small
+\caption{Original ambitions and the outcome after changing scope.}
+\label{tab:outcomes}
+\begin{tabularx}{\textwidth}{@{}P{40mm}Y@{}}
 \toprule
-\textbf{Goal} & \textbf{Status} & \textbf{Notes} \\
+Goal & Outcome \\
 \midrule
-Boot from BIOS into 32-bit protected mode & Done & Stage-1 MBR bootloader, A20, GDT, far jump into protected mode \\
-GDT, IDT, basic interrupt handling & Done & Exception handlers, 8259 PIC remapped to \texttt{0x20}/\texttt{0x28} \\
-Memory management & Done & Heap from the E820 map, 4~MiB identity paging, per-process 4~KiB pages \\
-Read files from a FAT16 disk & Done & ATA PIO driver; read-only, root directory only \\
-Load and run ELF executables & Done & ELF32 loader used by both \texttt{spawn} and \texttt{exec} \\
-Minimal C library for user programs & Done & Freestanding; some functions stubbed (see limitations below) \\
-Build and run Lua 5.5.0 & Done & Unmodified upstream source; REPL on four TTYs \\
+Unix-like OS with a Linux compatibility layer & Some Unix-style mechanisms were implemented, but no Linux application compatibility layer. The original application goal was not achieved. \\
+Scheduler that learns user habits, if time allowed & Not implemented. The scheduler is preemptive round-robin. \\
+Revised goal: run stock Lua compiled for the OS & Lua 5.5.0 runs with an adapted build and custom runtime. The saved image reaches four prompts; the host library remains incomplete. \\
+Supporting OS infrastructure & BIOS boot, interrupts, paging, task management, read-only FAT16, ELF loading, terminals, and basic networking are present. Their implementation and testing have the limits described in this report. \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
-\textbf{What works:}
-\begin{itemize}[nosep]
-  \item Booting from BIOS into 32-bit protected mode.
-  \item GDT, IDT, interrupt handling, and CPU exceptions.
-  \item 8259 PIC remapping and per-IRQ handling.
-  \item 8253 PIT timer at roughly 1000 Hz.
-  \item E820 memory detection and a heap allocator.
-  \item 4 MiB identity paging and per-process 4 KiB paging.
-  \item ATA PIO disk access (LBA28).
-  \item FAT16 filesystem (read-only, root directory only).
-  \item ELF32 program loading.
-  \item Preemptive round-robin scheduler with \texttt{fork}, \texttt{exec},
-  and \texttt{waitpid}.
-  \item VGA text-mode console with four TTYs.
-  \item PS/2 keyboard input.
-  \item 16550 serial port for logging.
-  \item PCI enumeration and Intel e1000 network driver.
-  \item Ethernet, ARP, IPv4, ICMP, and UDP networking.
-  \item A minimal C library for user programs.
-  \item Lua 5.5.0 running as a user program.
-\end{itemize}
+\section{Remaining limitations and next steps}
+\label{sec:limits}
 
-Most of the terms in this list are jargon; Annex~\ref{annex:x86} explains
-them from first principles, and Annex~\ref{annex:memory} shows where
-everything sits in memory.
+The most immediate work would be to strengthen the facilities already
+used by Lua. The user allocator needs alignment, block-size tracking,
+correct reallocation, and actual reclamation. The kernel needs complete
+ownership and cleanup of task memory, page tables, and loader buffers.
+For example, \code{paging_free_directory} clears mappings without freeing
+the allocated pages, and \code{spawn_elf} retains temporary loading data.
+More RAM does not repair these resource-lifetime problems.
 
-\textbf{Known limitations:}
-\begin{itemize}[nosep]
-  \item The C library is minimal: \texttt{malloc} is a bump allocator
-  with no \texttt{realloc} correctness, \texttt{fseek} and \texttt{ftell}
-  are stubs, and \texttt{time} and \texttt{mktime} return fixed values.
-  \item The filesystem is read-only; there is no support for writing,
-  creating, or deleting files.
-  \item \texttt{spawn\_elf} leaks the ELF file buffer: the task image is
-  copied into fresh user pages, but the buffer is never freed
-  (\texttt{exec\_elf} does free it).
-\end{itemize}
+Protection is another unfinished part. Applications share ring~0 with the
+kernel, and system calls use application pointers directly. There is no
+user-mode boundary that confines a faulty program. Moving applications
+to ring~3 would require revisiting mappings, entry and interrupt frames,
+kernel stacks, and pointer validation. It is a meaningful piece of future
+work, not a property supplied by the existing TSS alone. The Intel system
+programming manuals describe the underlying protection mechanisms.\cite{intel}
 
-\textbf{What does not work:}
-\begin{itemize}[nosep]
-  \item There is no user-mode privilege separation; all tasks run at ring 0
-  (a deliberate scope trade-off, Section A.3).
-  \item There is no SMP support; the system is single-core.
-  \item There is no DHCP client; the IP address is hardcoded.
-  \item There is no DMA; disk access is PIO only.
-\end{itemize}
+Task switching also does not save and restore per-task floating-point
+state in the current switch paths. Enabling the FPU at boot is not enough
+to establish correct floating-point execution across preempted tasks. The
+short calculation check does not cover that case.
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.9\textwidth]{mboot_init.png}
-\caption{The mboot console (QEMU, VGA text mode) after boot, from the
-August 2026 build. \texttt{init}
-brings up the network: it resolves the gateway via ARP, sends an ICMP echo
-to a public host, and starts a UDP echo server on port 7. It then
-launches Lua 5.5.0, leaving an interactive prompt. (The init system has
-since been simplified; see Section~\ref{sec:testing}.)}
-\label{fig:init}
-\end{figure}
+Other gaps affect robustness and everyday use. The boot path does not
+explicitly clear the kernel's \code{.bss} section. The ELF loader needs
+stronger bounds and format checks. Disk error handling needs consistent
+failure propagation. File creation, disk writes, seeking, real time
+services, and a fuller C library remain unfinished. The system uses one
+CPU, and the current init program neither reaps children nor restarts
+failed terminal sessions.
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.9\textwidth]{mboot_cube_time.png}
-\caption{A more demanding Lua workload: a wireframe cube and a timestamp
-rendered to the VGA console from inside the Lua REPL.}
-\label{fig:cube}
-\end{figure}
+These are nearer-term priorities than returning to the original Linux
+compatibility layer or the learning scheduler. Those ideas would require
+their own design and evaluation. In particular, an adaptive scheduler
+would need a definition of what to learn, a policy for using that
+information, and measurements showing whether it improved interaction.
+None of that has been implemented or measured here.
 
-The fact that Lua 5.5.0 runs successfully demonstrates that the operating
-system provides all the infrastructure that a real language runtime
-needs: memory allocation, file I/O, process management, a C library, and
-a working interrupt and timer system. That was the goal I set in
-Section~\ref{sec:goals}, and it is met.
 
-\section{Reflection and What I Learned}
-\label{sec:reflection}
+\section{What I take from the project}
 
-What I take away from the project sits on three levels. The obvious one
-is subject matter: I now know how a boot flow works end to end, how the
-CPU switches between privilege levels, how paging provides memory
-isolation, and how a scheduler juggles several tasks, knowledge I got
-by reading the Intel SDM, writing the assembly, and debugging all of it
-without a safety net.
+The clearest lesson is that getting an application to start and providing
+its whole operating environment are different achievements. Lua reached
+a prompt, but its allocator, file functions, and process environment still
+have limits. The same distinction explains why my original Linux
+compatibility goal was much larger than it first appeared.
 
-The second level is process. Managing a project that grew from a few
-hundred lines to several thousand forced me to read code I did not write
-(the Lua source, datasheets, RFCs) and pull out what mattered. It
-also forced me to plan in layers, and to change the plan without
-pretending the old one had been right all along.
+Changing the target let me complete a connected system: my bootloader
+starts my kernel, the kernel loads programs from disk, and a real upstream
+interpreter runs through the services I implemented. The result is more
+substantial than a boot demonstration. At the same time, the original
+Linux compatibility layer and the optional learning scheduler remain
+unachieved, and the current OS is not a general-purpose replacement for
+Unix or Linux.
 
-Third, and least fun: debugging is a skill. My first sessions were
-hours of flailing at symptoms. Near the end I could usually go from a
-crash to the guilty subsystem in an afternoon, mostly by resisting the
-urge to change three things at once.
+The project gave me concrete examples of how the layers depend on each
+other. A formatting bug became visible through arithmetic in Lua. A timer
+bug affected scheduling. A page-table bug changed the memory a program
+actually accessed. Building and correcting those connections is the main
+technical result of \code{mboot}, alongside the narrower application goal
+of running stock Lua on the system.
 
-On scope I did badly and know it. The scheduler, the TTYs, and the VFS
-layer grew past the original design and all three earned their keep:
-without them there is one Lua prompt, not four. The network stack never
-earned anything back: nothing in it was needed to run Lua, and it is
-where most of my scope drift came from. If I started over I would defend
-the core goal harder and let the network stack stay an experiment.
 
-The last thing worth saying is smaller: writing an operating system is
-hard but achievable. There is no trick to it beyond building
-incrementally, testing constantly, and being willing to delete code that
-does not work, which, inconveniently, is also the boring advice.
+There is also a lesson in deciding what to keep separate. The kernel heap
+and the application heap solve related problems but have different
+implementations. The terminal displayed on screen and the terminal bound
+to a process are different pieces of state. An executable format and an
+operating-system ABI are different contracts. When these distinctions
+are blurred, a feature can appear more complete than it is, or a failure
+can be attributed to the wrong component.
 
-\section{Conclusion}
-\label{sec:conclusion}
+So, could we travel back with Lua's source code and use it? QEMU emulates a
+PC-style BIOS machine with hardware quite similar to what one might find
+in a 1990s PC, so this project explores that kind of environment. It does
+not prove that \code{mboot} would run on every real computer from that
+decade. The CD alone wouldn't not be enough, as I haven't tested a compiler
+on \code{mboot}, forcing Lua to be compiled beforehand, with an adapted Makefile.
+The result of all the work on \code{mboot} is still enough to run a few
+executables, Lua being the most complex.
+\clearpage
+\appendix
+\section{An x86 primer for readers new to systems programming}
+\label{app:primer}
 
-I set out to build an operating system capable of running Lua 5.5.0. I
-planned it as a layered system, built it one subsystem at a time, and
-debugged it using QEMU, serial output, and GDB. The final system boots
-from BIOS, loads user programs from a FAT16 disk, and runs Lua 5.5.0 as
-a user program. It includes a preemptive scheduler, paging, a VFS layer,
-a VGA console, a serial port, a PCI bus driver, an e1000 network driver,
-and a small network stack.
+An application normally starts inside an environment that already handles
+memory, files, devices, and other programs. Writing the kernel moves the
+work below that environment. This appendix introduces the hardware ideas
+needed to understand the report, concentrating on the 32-bit execution
+model used by \code{mboot}.
 
-The project was difficult, and not only in the places I expected. Bugs
-appeared in the bootloader, the memory allocator, the paging system, the
-scheduler, and the C library; two designs I was confident in (the PIE
-plan, the first scheduler) had to be thrown out; and filesystem write
-support and a complete C library never made it past the deadline.
+\subsection{Instructions, registers, and addresses}
 
-It works the way I hoped, though: Lua 5.5.0 runs on an
-OS I wrote from scratch. Four terminals, each with a live Lua prompt,
-switching between them with Alt+F1 through Alt+F4. That is the image
-I will remember, because it is the moment the scheduler stopped being a
-diagram and started being real.
+The processor executes machine instructions stored as bytes in memory.
+A compiler translates C into those instructions, while an assembler
+translates assembly language. The CPU does not see a C variable name or
+a source filename; it sees operations on registers and memory addresses.
 
-If I were to continue the project, I would add filesystem write support,
-proper memory management with \texttt{sbrk} and \texttt{mmap}, and a more
-complete C library. I would also add user-mode privilege separation and
-SMP support. Neither is needed for the goal I set, though: as it stands,
-\texttt{mboot} is a small operating system that runs a real language
-runtime, and I built it from scratch.
+Registers are small pieces of storage inside the CPU. In the 32-bit x86
+code used here, general-purpose registers include \code{EAX}, \code{EBX},
+\code{ECX}, and \code{EDX}. \code{EIP} identifies the instruction to
+execute, \code{ESP} tracks the stack, and \code{EFLAGS} contains state such
+as arithmetic flags and whether maskable interrupts are enabled. There
+are also control registers: the report refers to \code{CR0} for enabling
+processor modes and \code{CR3} for selecting a page directory.
 
-\section*{References}
-\phantomsection
-\label{sec:refs}
+An address is a number used to locate something. Its meaning depends on
+the context. A disk-sector address is not a RAM address. A virtual address
+used by a program may be translated before memory is accessed. A device
+register can also occupy an address, in which case reading or writing it
+can affect hardware rather than ordinary stored data. Keeping those
+address spaces distinct is essential when interpreting the source.
+
+\subsection{The stack and a function call}
+
+A stack is an area of memory used in last-in, first-out order. On the x86
+path used in this project it grows towards lower addresses. Calling a
+function places a return address on the stack. The function may also use
+the stack for local variables, saved registers, and arguments, according
+to the calling convention followed by the compiler.
+
+When the function returns, execution continues at the saved return
+address. If that address or the stack pointer is corrupted, the processor
+can jump into unrelated memory. There is no language-level exception
+handler automatically surrounding the kernel to explain the mistake.
+This is why a bad argument layout or an undersized stack can appear as a
+failure far from the code that caused it.
+
+An interrupt also needs to preserve a return point, but its entry and
+return rules differ from an ordinary function call. The kernel's assembly
+stubs arrange saved state in a layout that C code can inspect. The
+scheduler uses that same layout to resume tasks. A context switch can
+therefore be understood as choosing which saved execution to return to,
+rather than calling the next program's \code{main} each time.
+
+\subsection{Booting before the C environment exists}
+
+In the BIOS boot path used here, firmware loads the first disk sector
+and gives it control. That sector contains a small assembly program. It
+cannot assume that the project's allocator, filesystem, or C library is
+already available; those are among the things it must eventually make
+possible.
+
+The bootloader initially runs in real mode, where BIOS services can be
+called through software interrupts. It uses disk services to read the
+kernel and the E820 service to ask about the machine's memory layout.
+Real-mode segment-and-offset addressing combines a segment shifted by
+four bits with an offset. The segment \code{0x1000} and offset zero thus
+refer to \code{0x10000}, the kernel's load address.
+
+Protected mode supplies the execution environment used by the 32-bit
+kernel. The transition requires setting up segment descriptors and
+loading the processor state expected by the new code. Afterwards,
+\code{mboot} uses its own drivers rather than returning to BIOS disk and
+keyboard services through its normal kernel I/O paths. This creates a
+clear responsibility boundary: the firmware helps load the system, but
+the running kernel must provide the services its programs use.
+
+\subsection{Segments, privilege levels, and the TSS}
+
+A segment descriptor describes properties of a memory segment, including
+its base, limit, and access permissions. The GDT holds descriptors, while
+segment registers contain selectors used to choose them. \code{mboot}
+uses flat code and data segments, so ordinary program addresses are not
+being relocated into separate small segments.
+
+Privilege levels are a separate part of this mechanism. Ring~0 code has
+privileges that an ordinary application running at ring~3 would not have.
+A conventional protected application environment combines those privilege
+rules with page permissions and controlled entries into the kernel.
+Merely running in the processor mode named ``protected mode'' does not
+mean the OS is using all those protections.
+
+The Task State Segment has several architectural uses. In the kind of
+software task switching relevant here, one important use is to provide
+a kernel stack when an interrupt changes privilege level. It is not the
+linked list of task records maintained by \code{mboot}'s scheduler, and
+loading a TSS does not automatically perform scheduling. The current
+kernel creates the TSS but runs applications at ring~0, so the intended
+ring~3-to-ring~0 stack transition is not exercised.
+
+\subsection{Paging and separate program memory}
+
+A program issues virtual addresses. With paging enabled, hardware uses
+page tables to translate them into physical addresses. A page is a fixed
+size unit of this mapping. The kernel uses 4~MiB pages for its initial
+identity map and 4~KiB pages where individual application pages need to
+be mapped separately.
+
+For a 4~KiB mapping in the format used by this project, a 32-bit address
+contains ten bits selecting a directory entry, ten selecting a table
+entry, and twelve identifying a byte within the page. The selected table
+entry supplies the physical page address and permission flags. The
+physical location of the directory is held in \code{CR3}.
+
+Two programs can therefore issue the same numerical virtual address while
+accessing different memory. Their page directories select different
+physical pages. This is useful when both copies of Lua were linked to
+start at the same address. It also explains why an address printed in an
+application log must be interpreted with that task's mappings in mind.
+
+Paging can enforce restrictions, but those restrictions depend on the
+page flags and the CPU's privilege state. In this project, extensive
+kernel mappings and ring~0 application execution prevent the page tables
+from serving as a security boundary. They still perform real translation;
+the missing protection does not make the translation imaginary.
+
+\subsection{Exceptions, device interrupts, and system calls}
+
+An exception is associated with the processor's current execution, for
+example a divide error or a page fault. A hardware interrupt comes from
+a device, such as the timer or keyboard. A software interrupt is invoked
+by an instruction, as with \code{int 0x80} in this project's application
+interface. All three need an entry path that saves the relevant state
+and transfers control to the appropriate handler.
+
+The IDT describes those entries. The PIC routes the legacy hardware
+interrupt lines, and \code{mboot} remaps their vectors to
+\code{0x20}--\code{0x2F} so that they do not use the CPU exception range.
+The PIT generates the timer interrupt used to give the scheduler regular
+opportunities to choose another task.
+
+Disabling maskable interrupts can protect a short critical operation on
+this single-CPU system, such as checking and taking a lock before another
+task is scheduled. It is not a general cure for concurrency: a long period
+with interrupts disabled prevents timely handling of input and timer
+events, and other mechanisms would be needed for multiple CPUs. The code's
+use of \code{cli} and \code{sti} must be understood in that limited context.
+
+A system call also has a convention for arguments and results. The
+application wrapper and kernel dispatcher must agree about registers,
+numbering, and the meaning of the data passed. Reusing an interrupt number
+or some call numbers from another OS does not supply that agreement for
+all the other interfaces an existing binary expects.
+
+\subsection{Port I/O, memory-mapped I/O, and DMA}
+
+With port I/O, the CPU uses instructions such as \code{in} and \code{out}
+to access a separate device-port address space. The ATA disk, timer,
+keyboard controller, and serial driver in this project use such accesses.
+With memory-mapped I/O, device registers appear in the memory address
+space and are accessed through pointers. These are two ways for software
+to communicate with device control interfaces.
+
+Moving a device's data is another question. In ATA PIO reads, the CPU
+moves words through the disk's data port into RAM. With DMA, a device can
+transfer data to or from memory that the driver has prepared for it. The
+e1000 driver's descriptor rings tell the network controller which packet
+buffers to use.
+
+Thus a driver can combine CPU accesses to control registers with DMA for
+packet data. The terms describe different parts of the interaction. The
+project's disk path is PIO, but its network path includes DMA; applying
+one description to every device would hide that distinction.
+
+\section{The memory layout used by mboot}
+\label{app:memory}
+
+There is no single table of addresses that describes every task at once.
+Some addresses are fixed by the bootloader or linker. Others are chosen
+by the allocator or discovered through PCI. After paging is enabled, a
+program's virtual layout must also be distinguished from the physical
+storage behind it.
+
+\subsection{Fixed boot and device addresses}
+
+\begin{longtable}{@{}P{33mm}P{38mm}P{80mm}@{}}
+\toprule
+Address & Defined by & Use in the project \\
+\midrule
+\endhead
+\code{0x7C00} & BIOS boot convention and \code{stage1/boot.asm} & Location of the first loaded boot sector. \\
+\code{0x10000} & Bootloader and \code{link.ld} & Kernel load and link address. \\
+\code{0x70FF0} & Bootloader and \code{stage2/loader.c} & Location of the 16-bit E820 entry count. \\
+\code{0x71000} & Bootloader and \code{stage2/loader.c} & Start of the E820 memory-map buffer. \\
+\code{0x90000} & Bootloader & Initial protected-mode stack top; later tasks receive allocated stacks. \\
+\code{0xB8000} & VGA text interface & Text display memory written by the VGA layer. \\
+\bottomrule
+\end{longtable}
+
+These values are supported by the source, rather than taken from one
+particular boot log. They do not prove that every surrounding memory
+range is reserved or protected correctly. In particular, the boot-data
+locations have to remain usable until the kernel has consumed them, and
+the kernel's zero-initialized storage still needs an explicit clearing
+step for a robust startup path.
+
+The E820 table describes regions reported by the BIOS, including which
+are usable RAM. The kernel allocator derives its managed region from that
+information. The first allocation and the locations of later page tables
+are runtime results, not fixed architectural addresses. Similarly, the
+e1000 register base comes from PCI discovery. Recording an example value
+from QEMU as though it were guaranteed by the source would be misleading.
+
+\subsection{Application link addresses}
+
+The build rules choose the following text addresses for several programs:
+\begin{longtable}{@{}P{43mm}P{35mm}P{73mm}@{}}
+\toprule
+Program & Virtual text address & Build rule \\
+\midrule
+\endhead
+\code{getty.elf} & \code{0x47000000} & Main Makefile. \\
+\code{init.elf} & \code{0x48000000} & Main Makefile. \\
+\code{lua.elf} & \code{0x50000000} & \code{user/lua/Makefile}. \\
+\code{fork_test.elf} & \code{0x53000000} & Main Makefile. \\
+\code{udp_lua.elf} & \code{0x54000000} & Main Makefile. \\
+\code{socket_echo.elf} & \code{0x55000000} & Main Makefile. \\
+\code{ping.elf} & \code{0x56000000} & Main Makefile. \\
+\bottomrule
+\end{longtable}
+
+These are the linker's text-section addresses, not a complete description
+of each ELF file's segments. The loader uses program-header virtual
+addresses and sizes to construct the task image. The task's allocated
+physical pages can be elsewhere, and two instances of the same executable
+can use the same virtual addresses with different backing pages.
+
+The task stack is not specified as a fixed offset just above Lua's image.
+Task creation allocates a separate 64~KiB stack from the kernel heap and
+maps its pages. Fork and exec have their own stack-handling paths. The
+startup argument strings are also copied into kernel allocations. These
+details matter when reasoning about lifetime and cleanup; a picture that
+simply places all application resources inside one contiguous high-address
+region would not match the implementation.
+
+The initial kernel map covers the 32-bit address space with identity
+mappings, and each process replaces selected parts of that map with finer
+mappings. It is therefore not a clean split into a completely private
+application half and an inaccessible kernel half. The numerical locations
+alone cannot show protection: the page flags and execution privilege must
+be considered as well.
+
+\clearpage
+
+\section{Guide to the source tree}
+\label{app:source}
+
+Paths in this appendix are relative to the repository root. They identify
+the implementation discussed in the report and avoid depending on line
+numbers that change when a file is edited.
+
+\begin{longtable}{@{}P{69mm}P{86mm}@{}}
+\toprule
+Source & Role \\
+\midrule
+\endhead
+\code{stage1/boot.asm}, \code{stage1/gdt.asm} & BIOS boot, kernel loading, and entry into protected mode. \\
+\code{link.ld}, \code{stage2/start_loader.asm}, \code{stage2/loader.c} & Kernel placement, assembly entry, and initialization. \\
+\code{stage2/cpu/interrupts/}, \code{stage2/cpu/pic/}, \code{stage2/cpu/pit/} & Exceptions, device interrupts, system-call dispatch, and timer setup. \\
+\code{stage2/mem.c}, \code{stage2/paging.c} & Kernel allocation and page-table operations. \\
+\code{stage2/scheduler.c}, \code{stage2/sched_switch.asm} & Task creation, scheduling, blocking, and process operations. \\
+\code{stage2/dev/disk.c}, \code{stage2/fat16.c}, \code{stage2/vfs.c} & Disk reads, filesystem access, and file-descriptor routing. \\
+\code{stage2/elf.c}, \code{user/src/crt0.s} & Executable loading and application entry. \\
+\code{stage2/dev/tty.c}, \code{stage2/dev/vga.c}, \code{stage2/dev/keyboard.c} & Terminals, display output, and keyboard input. \\
+\code{stage2/dev/pci.c}, \code{stage2/dev/e1k.c}, \code{stage2/net/} & PCI discovery, e1000 support, and network protocols. \\
+\code{user/src/libc.c}, \code{user/include/} & Custom C library and application headers. \\
+\code{user/src/init.c}, \code{user/src/getty.c} & Startup of terminal sessions and Lua. \\
+\code{user/lua/} & Upstream Lua source and adapted Makefile. \\
+\code{test_files/}, \code{Makefile}, \code{image.sh} & Demonstrations, build rules, and disk-image creation. \\
+\bottomrule
+\end{longtable}
+
+\section{The custom system-call interface}
+\label{app:syscalls}
+
+Applications invoke \code{int 0x80}, with the call number in \code{EAX}
+and arguments in \code{EBX}, \code{ECX}, \code{EDX}, \code{ESI}, and
+\code{EDI}. The result normally returns in \code{EAX}. The table lists
+arguments in that register order; a dash means no arguments.
+It describes \code{mboot}'s dispatcher, not Linux or POSIX compatibility.
+
+\begin{longtable}{@{}P{9mm}P{23mm}P{64mm}P{51mm}@{}}
+\toprule
+No. & Call & Arguments & Result or qualification \\
+\midrule
+\endhead
+1 & \code{exit} & Exit code & Marks the current task exited. \\
+2 & \code{fork} & --- & Child PID in parent, zero in child; $-1$ on failure. \\
+3 & \code{read} & Descriptor, buffer, byte count & Bytes read or failure. \\
+4 & \code{write} & Descriptor, buffer, byte count & Bytes written or failure; successful output also goes to serial. \\
+5 & \code{open} & Path & Descriptor or $-1$. No flags are passed to the kernel. \\
+6 & \code{close} & Descriptor & Backend result for descriptors above 2; returns zero without closing 0--2. \\
+7 & \code{waitpid} & PID & Exit code or $-1$; no POSIX status argument or options. \\
+11 & \code{exec} & Path, argument vector, argument count, terminal & Replaces the program on success; returns $-1$ on failure. \\
+54 & \code{ioctl} & Descriptor, request, argument & Handles terminal selection through \code{TIOCSCTTY}; the descriptor is ignored. \\
+63 & \code{dup2} & Old descriptor, new descriptor & Result of the VFS duplication operation. \\
+300 & \code{socket} & Domain, type, protocol & Descriptor or $-1$. \\
+301 & \code{bind} & Descriptor, address, address length & Socket operation result. \\
+302 & \code{sendto} & Descriptor, buffer, length, destination, destination length & Bytes sent or failure; no flags register. \\
+303 & \code{recvfrom} & Descriptor, buffer, length, source address output, address-length pointer & Bytes received or failure; no flags register. \\
+\bottomrule
+\end{longtable}
+
+\section{Short glossary}
+
+\begin{description}[style=nextline]
+  \item[ABI (application binary interface)] The machine-level conventions
+  a compiled program relies on, including calls, data layout, and startup.
+  \item[BIOS] Firmware used by this project's boot path to load the first
+  disk sector and provide services before the kernel takes over.
+  \item[ELF] The executable format used for the project's programs. A shared
+  file format does not imply a shared operating-system interface.
+  \item[Kernel] The part of the OS that manages hardware and provides
+  services to programs.
+  \item[Paging] Translation from virtual addresses to physical addresses
+  using tables maintained by the kernel.
+  \item[Process or task] A scheduled execution context. In this project it
+  has a saved execution state and associated resources, but no enforced
+  privilege separation from the kernel.
+  \item[REPL] Read-eval-print loop: the interactive Lua prompt.
+  \item[Ring 0 and ring 3] x86 privilege levels. Ring~0 has kernel privileges;
+  ring~3 is normally used for restricted applications. This project uses
+  ring~0 for all tasks.
+  \item[System call] An application's request for a kernel service. Here
+  it is made through software interrupt \code{0x80}.
+  \item[TTY] A terminal interface. The four virtual terminals maintain
+  separate screen and input state while sharing the display and keyboard.
+  \item[VFS] Virtual filesystem: a common interface for operations on
+  files and file-like devices.
+\end{description}
+
+\clearpage
+\begin{thebibliography}{9}
 \addcontentsline{toc}{section}{References}
 
-\begin{enumerate}[nosep, label={[\arabic*]}]
-  \item Intel Corporation. \emph{Intel 64 and IA-32 Architectures Software
-  Developer's Manual, Volume 3A: System Programming Guide, Part 1.}
-  \url{https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html}
-  \item OSDev Wiki. \emph{Bare Bones, GDT, IDT, Paging, Detecting Memory
-  (E820), PIC, PIT, PS/2 Keyboard, VGA Hardware, Serial Ports, ATA PIO
-  Mode, FAT, ELF, PCI, Lua.} \url{https://wiki.osdev.org/}
-  \item Microsoft Corporation. \emph{Microsoft Extensible Firmware
-  Initiative FAT32 File System Specification, v1.03.}
-  \url{https://academy.cba.mit.edu/classes/networking_communications/SD/FAT.pdf}
-  \item Tool Interface Standard. \emph{Executable and Linkable Format
-  (ELF) Specification, Version 1.2.}
-  \url{https://refspecs.linuxfoundation.org/elf/elf.pdf}
-  \item J.~Postel. \emph{RFC 791: Internet Protocol.} IETF, 1981.
-  \url{https://datatracker.ietf.org/doc/html/rfc791}
-  \item D.~Plummer. \emph{RFC 826: An Ethernet Address Resolution
-  Protocol.} IETF, 1982.
-  \url{https://datatracker.ietf.org/doc/html/rfc826}
-  \item J.~Postel. \emph{RFC 768: User Datagram Protocol.} IETF, 1980.
-  \url{https://datatracker.ietf.org/doc/html/rfc768}
-  \item J.~Postel. \emph{RFC 792: Internet Control Message Protocol.}
-  IETF, 1981. \url{https://datatracker.ietf.org/doc/html/rfc792}
-  \item Intel Corporation. \emph{PCI/PCI-X Family of Gigabit Ethernet
-  Controllers Software Developer's Manual (82540EM / 82574L).}
-  \url{https://www.intel.com/content/dam/www/public/us/en/documents/manuals/gigabit-ethernet-controller-datasheet.pdf}
-  \item R.~Ierusalimschy, L.~H.~de~Figueiredo, and W.~Filho. \emph{Lua 5.5
-  Reference Manual.} PUC-Rio, 2025. \url{https://www.lua.org/manual/5.5/}
-  \item The Lua Team. \emph{Lua 5.5.0 source code.}
-  \url{https://www.lua.org/ftp/lua-5.5.0.tar.gz}
-  \item QEMU Project. \emph{QEMU System Emulation Documentation.}
-  \url{https://www.qemu.org/docs/master/system/}
-\end{enumerate}
+\bibitem{repo}
+Theo Marcos. \emph{mboot source tree and Git history.}
+Project repository accompanying this report. Implementation paths are
+listed in Appendix~\ref{app:source}; development milestones are identified by commit in
+the main text. The repository's \code{SOURCES.md} records additional
+technical references, including OSDev documentation and the FAT16 driver
+by rweichler used as a reference. These external contributions should not
+be confused with code or specifications originating in this project.
 
+\bibitem{lua-source}
+Lua.org, PUC-Rio. \emph{Lua 5.5.0 source distribution.}
+\url{https://www.lua.org/ftp/lua-5.5.0.tar.gz}.
+Archive checksum published at \url{https://www.lua.org/ftp/}; compared
+with the vendored source for this revision.
+
+\bibitem{lua-manual}
+Roberto Ierusalimschy, Luiz Henrique de Figueiredo, and Waldemar Celes.
+\emph{Lua 5.5 Reference Manual.}
+\url{https://www.lua.org/manual/5.5/manual.html}.
+
+\bibitem{intel}
+Intel Corporation. \emph{Intel 64 and IA-32 Architectures Software
+Developer's Manual}, system programming volumes.
+\url{https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html}.
+
+\bibitem{rfc791}
+Jon Postel. \emph{RFC 791: Internet Protocol.} 1981.
+\url{https://www.rfc-editor.org/rfc/rfc791}.
+
+\bibitem{rfc826}
+David C. Plummer. \emph{RFC 826: An Ethernet Address Resolution Protocol.} 1982.
+\url{https://www.rfc-editor.org/rfc/rfc826}.
+
+\bibitem{rfc768}
+Jon Postel. \emph{RFC 768: User Datagram Protocol.} 1980.
+\url{https://www.rfc-editor.org/rfc/rfc768}.
+
+\bibitem{rfc792}
+Jon Postel. \emph{RFC 792: Internet Control Message Protocol.} 1981.
+\url{https://www.rfc-editor.org/rfc/rfc792}.
+
+\end{thebibliography}
 \end{document}
