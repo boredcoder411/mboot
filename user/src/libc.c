@@ -152,6 +152,7 @@ ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags,
   return ret;
 }
 
+/* ChatGPT started here */
 void *memcpy(void *dst, const void *src, uint32_t size) {
   uint8_t *d = (uint8_t *)dst;
   const uint8_t *s = (const uint8_t *)src;
@@ -192,6 +193,7 @@ int strcmp(const char *str1, const char *str2) {
   }
   return (int)*str1 - (int)*str2;
 }
+/* ChatGPT ended here */
 
 int abs(int x) { return x < 0 ? -x : x; }
 
@@ -240,6 +242,7 @@ void free(void *ptr) { (void)ptr; }
 /* ===== errno ===== */
 int errno;
 
+/* ChatGPT started here */
 /* ===== ctype ===== */
 int isalnum(int c) {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
@@ -263,7 +266,9 @@ int isxdigit(int c) {
 }
 int tolower(int c) { return (c >= 'A' && c <= 'Z') ? c + 32 : c; }
 int toupper(int c) { return (c >= 'a' && c <= 'z') ? c - 32 : c; }
+/* ChatGPT ended here */
 
+/* ChatGPT started here */
 /* ===== string.h ===== */
 void *memmove(void *dest, const void *src, size_t n) {
   uint8_t *d = (uint8_t *)dest;
@@ -487,7 +492,9 @@ char *strerror(int errnum) {
     return "Unknown error";
   }
 }
+/* ChatGPT ended here */
 
+/* ChatGPT started here */
 /* ===== stdio.h ===== */
 static FILE __stdin = {0, 0, 0, _IONBF, NULL, 0, 0, 0, -1, 0};
 static FILE __stdout = {1, 0, 0, _IONBF, NULL, 0, 0, 0, -1, 0};
@@ -1060,6 +1067,7 @@ int sprintf(char *str, const char *format, ...) {
 int vfprintf(FILE *stream, const char *format, va_list ap) {
   return __vfprintf(stream, format, ap);
 }
+/* ChatGPT ended here */
 
 /* ===== stdlib.h ===== */
 void abort(void) {
@@ -1278,6 +1286,7 @@ void qsort(void *base, size_t nmemb, size_t size,
   qsort_inner((char *)base, 0, nmemb - 1, size, compar);
 }
 
+/* ChatGPT started here */
 /* ===== math.h ===== */
 double acos(double x) { return __builtin_acos(x); }
 double asin(double x) { return __builtin_asin(x); }
@@ -1391,6 +1400,7 @@ int isnormal(double x) { return __builtin_isnormal(x); }
 
 int ifloor(double x) { return (int)floor(x); }
 int iceil(double x) { return (int)ceil(x); }
+/* ChatGPT ended here */
 
 /* ===== time.h ===== */
 time_t time(time_t *tloc) {

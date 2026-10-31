@@ -1,6 +1,7 @@
 #include "utils.h"
 #include "dev/serial.h"
 
+/* ChatGPT started here */
 bool strncmp(const char *a, const char *b, size_t n) {
   for (size_t i = 0; i < n; i++) {
     if (a[i] != b[i]) {
@@ -54,3 +55,4 @@ float bytes_to_gb(uint64_t bytes) {
 }
 
 uint8_t bcd_to_bin(uint8_t val) { return (val & 0x0F) + ((val / 16) * 10); }
+/* ChatGPT ended here */

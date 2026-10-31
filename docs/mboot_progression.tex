@@ -20,6 +20,24 @@
   pdftitle={Could a 1990s PC Run Lua?},
   pdfauthor={Theo Marcos}
 }
+\definecolor{codeblue}{RGB}{35,75,145}
+\definecolor{codegreen}{RGB}{35,120,75}
+\definecolor{codegray}{RGB}{105,105,105}
+\definecolor{codepurple}{RGB}{125,55,145}
+\lstdefinestyle{CStyle}{
+  language=C,
+  keywordstyle=\color{codeblue}\bfseries,
+  commentstyle=\color{codegreen}\itshape,
+  stringstyle=\color{codepurple},
+  identifierstyle=\color{black}
+}
+\lstdefinestyle{AsmStyle}{
+  language=[x86masm]Assembler,
+  morekeywords={cli,sti,hlt,iret,lgdt,in,out,mov,or,jmp,push,pop,call},
+  keywordstyle=\color{codeblue}\bfseries,
+  commentstyle=\color{codegreen}\itshape,
+  stringstyle=\color{codepurple}
+}
 \lstset{
   basicstyle=\ttfamily\small,
   breaklines=true,
@@ -423,7 +441,7 @@ to confuse:
 
 \par\medskip
 \noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[caption={Excerpt from the protected-mode transition.}]
+\begin{lstlisting}[style=AsmStyle,caption={Excerpt from the protected-mode transition.}]
 cli
 in al, 0x92
 or al, 2
@@ -443,6 +461,8 @@ the segment descriptors are. Setting the low bit of \code{CR0} enables
 protected mode, and the far jump loads the code-segment selector for the
 new execution environment. The later segment-register and stack setup
 are also necessary; setting one control bit does not prepare a C runtime.
+The GDT assembly in \code{stage1/gdt.asm} is adapted from the
+\code{boot/gdt.asm} example in \emph{x86-bootloader} \cite{gdt-source}.
 
 This is a compact boot path with narrow assumptions. Its disk-loading
 routine uses BIOS cylinder/head/sector reads rather than a general loader
@@ -486,7 +506,7 @@ The scheduling part of the timer handler is small:
 
 \par\medskip
 \noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=C,caption={scheduler\_tick in stage2/scheduler.c.}]
+\begin{lstlisting}[style=CStyle,caption={scheduler\_tick in stage2/scheduler.c.}]
 uint32_t scheduler_tick(registers_t *r) {
   if (!current_task)
     return (uint32_t)r;
@@ -541,7 +561,7 @@ The \code{write} wrapper in the C library makes the first part concrete:
 
 \par\medskip
 \noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=C,caption={The application write wrapper.}]
+\begin{lstlisting}[style=CStyle,caption={The application write wrapper.}]
 ssize_t write(int fd, const void *buf, size_t count) {
   ssize_t ret;
   asm volatile("int $0x80"
@@ -621,6 +641,11 @@ non-local jumps, and wrappers for system calls. A function such as
 \code{printf} ultimately reaches the kernel through \code{int 0x80}.
 The interrupt number and some system-call numbers resemble Linux i386,
 but the interface is specific to \code{mboot}.
+
+The library implements a subset of familiar C interfaces. ISO C describes
+their expected behavior; musl provides an example of a complete C library,
+and LLVM's compiler-rt provides compiler support routines such as integer
+division helpers.\cite{iso-c,musl,llvm-compiler-rt}
 
 Lua's normal allocator uses \code{realloc} and \code{free}. Those functions
 are especially important because the interpreter creates and resizes
@@ -722,7 +747,7 @@ must be sent as:
 
 \par\medskip
 \noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=C]
+\begin{lstlisting}[style=CStyle]
 outb(PIT_COMMAND, 0x36);
 \end{lstlisting}
 \end{minipage}
@@ -742,7 +767,7 @@ memory. The corrected construction is:
 
 \par\medskip
 \noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=C]
+\begin{lstlisting}[style=CStyle]
 uint32_t phys_base = entry & 0xFFC00000U;
 for (uint32_t i = 0; i < 1024; ++i) {
     ((uint32_t *)table)[i] =
@@ -1349,6 +1374,18 @@ No. & Call & Arguments & Result or qualification \\
   files and file-like devices.
 \end{description}
 
+\section{Use of generative AI}
+\label{app:ai-use}
+
+OpenAI's ChatGPT was used during development to rewrite Git commit messages,
+explain the e1000 network card, and help implement repetitive code such as
+the keyboard layout array and basic utilities. ChatGPT generated all of
+\code{math.h} and a substantial part of the custom C library. These uses
+are cited here for transparency; the project repository identifies the
+resulting implementation. \cite{openai-ai} Parts of the report (notably the bibliography)
+were generated with ChatGPT from the table in \code{SOURCES.md}, but many
+small contributions were unprompted, inline suggestions from copilot in VSCode. \cite{gh-cop}
+
 \clearpage
 \begin{thebibliography}{9}
 \addcontentsline{toc}{section}{References}
@@ -1372,6 +1409,31 @@ with the vendored source for this revision.
 Roberto Ierusalimschy, Luiz Henrique de Figueiredo, and Waldemar Celes.
 \emph{Lua 5.5 Reference Manual.}
 \url{https://www.lua.org/manual/5.5/manual.html}.
+
+\bibitem{gdt-source}
+lukearend. (n.d.). \emph{x86-bootloader} [Source code]. GitHub.
+\url{https://github.com/lukearend/x86-bootloader/blob/master/boot/gdt.asm}.
+
+\bibitem{openai-ai}
+OpenAI. (2026). \emph{ChatGPT} [Large language model].
+\url{https://chatgpt.com/}.
+
+\bibitem{gh-cop}
+Github. (2026). \emph{Copilot} [Mix of large language models].
+\url{https://chatgpt.com/}.
+
+\bibitem{iso-c}
+ISO/IEC JTC 1/SC 22/WG 14. (2011). \emph{Programming languages---C}
+(Working Draft N1570). \url{https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf}.
+
+\bibitem{musl}
+musl project. (n.d.). \emph{musl} [C standard library source code].
+Retrieved October 29, 2026, from \url{https://git.musl-libc.org/cgit/musl/}.
+
+\bibitem{llvm-compiler-rt}
+LLVM Project. (n.d.). \emph{compiler-rt} [Compiler runtime source code].
+Retrieved October 29, 2026, from
+\url{https://github.com/llvm/llvm-project/tree/main/compiler-rt}.
 
 \bibitem{intel}
 Intel Corporation. \emph{Intel 64 and IA-32 Architectures Software

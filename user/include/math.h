@@ -1,5 +1,6 @@
 #pragma once
 
+/* ChatGPT started here */
 #define HUGE_VAL ((double)1e308)
 
 #define FP_NAN 0
@@ -38,3 +39,4 @@ int isnormal(double x);
 
 int ifloor(double x);
 int iceil(double x);
+/* ChatGPT ended here */
