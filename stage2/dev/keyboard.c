@@ -10,6 +10,7 @@ uint8_t keyboard_buffer[KEYBOARD_BUFFER_SIZE];
 uint16_t keyboard_buffer_head = 0;
 uint16_t keyboard_buffer_tail = 0;
 
+/* ChatGPT started here */
 const char scancode_map[] = {
     0,   27,   '1',  '2', '3',  '4', '5', '6', '7', '8', '9', '0', '\'',
     '^', '\b', '\t', 'q', 'w',  'e', 'r', 't', 'z', 'u', 'i', 'o', 'p',
@@ -29,6 +30,7 @@ const char shift_scancode_map[] = {
     0,   0,    0,    0,   0,   0,   0,   0,   0,   '-', 0,   0,   0,
     '+', 0,    0,    0,   0,   0,   0,   0,   0,   0,   0,   0,
 };
+/* ChatGPT ended here */
 
 int keyboard_has_key() { return keyboard_buffer_head != keyboard_buffer_tail; }
 
