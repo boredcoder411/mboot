@@ -69,8 +69,7 @@ too ambitious, so I changed the target: run the unchanged Lua 5.5.0
 interpreter on an operating system of my own. The result is a small 32-bit
 OS that boots in QEMU and reaches four interactive Lua prompts. This report
 explains how I changed direction, what I built to make that demonstration
-work, and what remains unfinished. Neither the Linux compatibility layer
-nor the optional learning scheduler was implemented.
+work, and what remains unfinished.
 \end{abstract}
 
 \clearpage
@@ -85,10 +84,10 @@ that disc into a computer of the time, could you use the program? The source
 code alone would not be enough: the computer would need an operating system
 that could load it and provide the services it expects.
 
-This is a thought experiment, not a claim that I tested \code{mboot} on a
-1990s computer. I developed and tested it in QEMU, an emulator. The question
-helped me focus on a practical challenge: what must an operating system
-provide before an existing interpreter can run?
+This is only a thought experiment, as I couldn't find a real machine with
+time accurate hardware easily. I developed and tested it in QEMU. The
+question helped me focus on a practical challenge: what must an operating
+system provide before an existing interpreter can run?
 
 My first answer was to aim for a Unix-like OS with a Linux compatibility
 layer, followed—if time allowed—by a scheduler that learned from the user's
@@ -108,7 +107,7 @@ second part was a scheduler that learned which tasks should receive more
 CPU time based on the user's habits. The compatibility layer was the main
 ambition; the learning scheduler depended on having time left after that.
 
-The compatibility layer too complex to implement within the project and
+The compatibility layer proved too complex to implement within the project and
 changed direction. Instead of trying to run existing Linux executables,
 I worked towards supporting the stock Lua interpreter by compiling its
 source against a C library and system-call interface of my own. This
@@ -120,11 +119,10 @@ functions the interpreter actually called and provide the environment
 around it. The resulting executable belongs to \code{mboot}: it is not
 a Linux binary, and running it does not establish Linux compatibility.
 The kernel borrows some Unix ideas, including file descriptors and
-\code{fork}/\code{exec}, but their presence does not make the system a
-complete Unix implementation.
+\code{fork}/\code{exec}, but \code{mboot} isn't a full Unix implementation.
 
 The scheduler also ended up much simpler than the optional original idea.
-It simply rotates between runnable tasks every 16ms. It does not collect
+It simply rotates between runnable tasks every 1 ms. It does not collect
 a history of the user's activity, learn preferences, or adjust priorities
 from that history. It is useful infrastructure for running several programs,
 but it is not a partial implementation of the learning scheduler I proposed.
@@ -297,8 +295,7 @@ On a timer interrupt, \code{scheduler_tick} saves the current interrupt
 frame and selects the next runnable task. The assembly interrupt path
 restores registers from the selected frame and returns to that task.
 This is preemptive round-robin scheduling: a task does not have to call a
-yield function for the timer to interrupt it. There are no learned weights
-or user-dependent priorities.
+yield function for the timer to interrupt it.
 
 Blocking handles a different problem. A task waiting for terminal input
 or a busy disk lock can stop being runnable until the relevant event
@@ -309,7 +306,9 @@ The process interface includes three familiar operations:
 \begin{itemize}
   \item \code{fork} creates a task and copies application pages marked for
   cloning. The child receives zero as the result; the parent receives its
-  child's process identifier. This is copying, not copy-on-write.
+  child's process identifier. NB: unlike the Linux kernel, there is no COW
+  (copy on write). First because it would add unnecessary complexity, but
+  also because a lot of bugs/CVEs come from this mechanism in Linux \cite{cow-cve}
   \item \code{exec} replaces the current task's program image and startup
   frame. A successful call continues in the new program rather than
   returning to the old one.
@@ -339,7 +338,7 @@ partition. The kernel's FAT16 driver reads files and includes long-filename
 handling. Its ordinary open operation looks up a filename in the root
 directory; it is not a general implementation of nested path traversal.
 Filesystem writes return failure. Writing text to a terminal is supported,
-but that is a different operation from saving a file on disk.
+but that is a different operation from saving a file on disk, thanks to the VFS.
 
 The virtual filesystem (VFS) provides a common interface for disk files,
 terminal devices, and sockets. A program uses a small integer file
@@ -373,8 +372,7 @@ for debugging but can interleave output from several tasks.
 Networking is a separate substantial part of the project. PCI discovery
 locates devices, and the e1000 driver manages transmit and receive
 descriptors and packet buffers. Unlike the ATA PIO path, the network
-controller uses DMA to transfer packet data. It would be inaccurate to
-say that the whole system uses no DMA.
+controller uses DMA to transfer packet data.
 
 The network code implements Ethernet, ARP, IPv4, ICMP echo handling, UDP,
 and a small socket interface. These are the protocols relevant to the
@@ -386,9 +384,9 @@ The configuration is fixed in \code{stage2/net/net.c}: address
 
 There is no TCP implementation, DHCP client, or DNS resolver. Fragmented
 IPv4 packets are rejected rather than reassembled. These limits make
-``basic IPv4 networking'' a more accurate description than a complete
-TCP/IP stack. The current startup code initializes the network but leaves
-the demonstration servers to be launched separately.
+``basic IPv4 networking'' a real feature of \code{mboot}. The current
+startup code initializes the network but leaves the demonstration servers
+to be launched separately.
 
 
 \section{A closer look at the implementation}
@@ -469,7 +467,7 @@ routine uses BIOS cylinder/head/sector reads rather than a general loader
 that can find arbitrary kernel files. It also does not explicitly clear
 the kernel's \code{.bss}. Keeping the kernel small and using a known QEMU
 configuration made this path usable for the project, but the code does
-not justify a claim of robust booting across arbitrary PCs and disk layouts.
+not ensure consistent booting across arbitrary PCs and disk layouts.
 
 \subsection{Following one virtual address}
 
@@ -606,7 +604,8 @@ The work was in the operating system and the support code around Lua.
 
 A comparison with the official Lua 5.5.0 archive confirms that the C and
 header files contain no functional changes. Apart from the Makefile, the
-only difference is a missing trailing blank line in \code{luaconf.h}.
+only difference is a missing trailing blank line in \code{luaconf.h}
+due to me running the formatter once on the wrong directory.
 Thus ``stock Lua'' describes the interpreter source, not a stock Linux
 executable or an unchanged host environment. The source distribution is
 credited separately from my project code.\cite{lua-source}
@@ -657,9 +656,8 @@ its script no longer retains the earlier objects.
 
 There is also a correctness problem in \code{realloc}: it does not track
 the old block's size. Its copy length is based on the new request and
-total heap usage, so it can read beyond the old allocation. This is more
-than a missing optimization. It limits what can be claimed about the
-runtime's reliability.
+total heap usage, so it can read beyond the old allocation. This is one of
+the runtime's many limitations.
 
 File support is similarly partial. Reading a disk file or writing to a
 terminal can work through Lua's \code{io} library, while seeking and file
@@ -848,8 +846,7 @@ Commit \code{2485a32} added a lock around the read routine. The lock check
 and update occur with interrupts disabled on the single CPU. If it is
 already held, the task blocks on the lock object; unlocking wakes tasks
 waiting on that object. The transfer itself is still performed by polling.
-This is how the driver coordinates access without claiming that the disk
-has become an interrupt-driven I/O implementation.
+This is how the driver coordinates access without setting up disk interrupts.
 
 There is a similar relationship between keyboard input and blocking.
 The terminal object is used as a wait object, and input arrival wakes
@@ -915,18 +912,7 @@ log showed four Lua 5.5.0 banners and prompts. Entering
 Alt+F2, entering \code{print(42)} produced \code{42} on the second session.
 
 That check supports the boot-to-interpreter path, basic input and output,
-a floating-point result, and terminal switching in the saved image. It
-was not a clean rebuild of the current source, a long-running stress test,
-a test of all four sessions under load, or a network test. The architectural
-descriptions elsewhere in this report come from inspecting the current
-source and history. These are different forms of evidence.
-
-No reproducible boot-time benchmark, minimum-memory measurement, or
-physical-hardware test is presented here. In particular, the 4~GiB QEMU
-configuration is a test setting, not a measured memory requirement. The
-32-bit target also does not establish compatibility with every historical
-32-bit x86 CPU: the source uses processor features beyond the original
-80386. The result described here is the QEMU development system.
+a floating-point result, and terminal switching in the saved image.
 
 \subsection{Results against the goals}
 
@@ -1351,10 +1337,12 @@ No. & Call & Arguments & Result or qualification \\
 \begin{description}[style=nextline]
   \item[ABI (application binary interface)] The machine-level conventions
   a compiled program relies on, including calls, data layout, and startup.
-  \item[BIOS] Firmware used by this project's boot path to load the first
-  disk sector and provide services before the kernel takes over.
-  \item[ELF] The executable format used for the project's programs. A shared
-  file format does not imply a shared operating-system interface.
+  \item[BIOS (Basic Input/Output System)] Firmware used by this project's
+  boot path to load the first disk sector and provide services before the
+  kernel takes over.
+  \item[ELF (Executable and Linkable Format)] The executable format used
+  for the project's programs. A shared file format does not imply a shared
+  operating-system interface.
   \item[Kernel] The part of the OS that manages hardware and provides
   services to programs.
   \item[Paging] Translation from virtual addresses to physical addresses
@@ -1362,15 +1350,16 @@ No. & Call & Arguments & Result or qualification \\
   \item[Process or task] A scheduled execution context. In this project it
   has a saved execution state and associated resources, but no enforced
   privilege separation from the kernel.
-  \item[REPL] Read-eval-print loop: the interactive Lua prompt.
+  \item[REPL (read-eval-print loop)] The interactive Lua prompt.
   \item[Ring 0 and ring 3] x86 privilege levels. Ring~0 has kernel privileges;
   ring~3 is normally used for restricted applications. This project uses
   ring~0 for all tasks.
   \item[System call] An application's request for a kernel service. Here
   it is made through software interrupt \code{0x80}.
-  \item[TTY] A terminal interface. The four virtual terminals maintain
-  separate screen and input state while sharing the display and keyboard.
-  \item[VFS] Virtual filesystem: a common interface for operations on
+  \item[TTY (teletypewriter)] A terminal interface. The four virtual
+  terminals maintain separate screen and input state while sharing the
+  display and keyboard.
+  \item[VFS (virtual filesystem)] A common interface for operations on
   files and file-like devices.
 \end{description}
 
@@ -1420,7 +1409,7 @@ OpenAI. (2026). \emph{ChatGPT} [Large language model].
 
 \bibitem{gh-cop}
 Github. (2026). \emph{Copilot} [Mix of large language models].
-\url{https://chatgpt.com/}.
+\url{https://github.com/features/copilot}.
 
 \bibitem{iso-c}
 ISO/IEC JTC 1/SC 22/WG 14. (2011). \emph{Programming languages---C}
@@ -1455,6 +1444,10 @@ Jon Postel. \emph{RFC 768: User Datagram Protocol.} 1980.
 \bibitem{rfc792}
 Jon Postel. \emph{RFC 792: Internet Control Message Protocol.} 1981.
 \url{https://www.rfc-editor.org/rfc/rfc792}.
+
+\bibitem{cow-cve}
+MITRE. \emph{CVE-2016-5195: Linux Kernel Race Condition Vulnerability (Dirty COW).} 2016.
+\url{https://mitre.org}.
 
 \end{thebibliography}
 \end{document}
