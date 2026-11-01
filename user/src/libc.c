@@ -1,5 +1,8 @@
+// Freestanding application runtime and custom int 0x80 wrappers. This is a limited C library, not a POSIX or Linux ABI.
 #include "libc.h"
 
+/* These numbers and register conventions form mboot's own syscall ABI;
+   matching Linux numbers for a few calls does not make it Linux-compatible. */
 #define __NR_exit 1
 #define __NR_fork 2
 #define __NR_read 3
@@ -209,6 +212,8 @@ void srand(uint32_t s) { seed = s; }
 static uint8_t heap[65536];
 static uint32_t heap_used = 0;
 
+/* Application allocation uses a fixed-size bump heap. It does not reclaim
+   freed blocks, so long-running programs can exhaust this heap. */
 void *malloc(size_t size) {
   if (heap_used + size >= sizeof(heap)) {
     return 0;
@@ -228,6 +233,9 @@ void *calloc(size_t num, size_t size) {
 }
 
 void *realloc(void *ptr, size_t size) {
+  /* This allocator does not track individual allocation sizes. Consequently
+     this copy length is only an approximation and realloc is not generally
+     safe when the requested size exceeds the old allocation. */
   if (!ptr)
     return malloc(size);
   void *new_ptr = malloc(size);
@@ -506,7 +514,12 @@ FILE *stderr = &__stderr;
 
 static FILE __files[FOPEN_MAX];
 
+/* FILE is a userspace wrapper around an integer kernel descriptor. This
+   fixed table limits the number of streams independently of the kernel's
+   descriptor limit. The standard streams above use descriptors 0, 1 and 2. */
 static int __filemode_to_flags(const char *mode) {
+  /* The wrapper translates common mode strings, but the kernel currently
+     ignores open flags and the FAT16 backend does not implement writes. */
   int flags = 0;
   if (mode[0] == 'r') {
     flags = 0;
@@ -571,6 +584,8 @@ int fclose(FILE *stream) {
 }
 
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
+  /* Consume the one-character pushback slot first, then ask the kernel for
+     the remaining bytes. The C API reports complete elements, not bytes. */
   size_t total = size * nmemb;
   size_t count = 0;
   uint8_t *p = (uint8_t *)ptr;
@@ -609,6 +624,7 @@ int fflush(FILE *stream) {
   return 0;
 }
 
+/* Seeking is not supported by the current filesystem/runtime interface. */
 int fseek(FILE *stream, long offset, int whence) {
   (void)stream;
   (void)offset;
@@ -671,6 +687,7 @@ int getc(FILE *stream) {
 }
 
 int ungetc(int c, FILE *stream) {
+  /* The stream has a single pushback slot rather than an arbitrary buffer. */
   if (stream->ungetc >= 0)
     return EOF;
   stream->ungetc = c;
@@ -709,6 +726,8 @@ static void __print_str(char **str, size_t *pos, size_t max, const char *s) {
 
 static void __print_int(char **str, size_t *pos, size_t max, int val, int base,
                         int uppercase) {
+  /* Remainders produce digits least-significant first. Collect them locally,
+     then emit them backwards to obtain the usual written representation. */
   char buf[32];
   int i = 0;
   unsigned int uval;
@@ -750,6 +769,8 @@ static void __print_unsigned(char **str, size_t *pos, size_t max,
 
 static void __print_double_f(char **str, size_t *pos, size_t max, double val,
                              int precision) {
+  /* Repeated multiplication extracts decimal fraction digits. This small
+     formatter truncates rather than providing full libc rounding semantics. */
   if (precision < 0)
     precision = 6;
   size_t start = *pos;
@@ -811,6 +832,9 @@ static void __print_double_g(char **str, size_t *pos, size_t max, double val,
 }
 
 static int __vfprintf(FILE *stream, const char *format, va_list ap) {
+  /* Parse a subset of printf conversions into a temporary buffer and flush
+     literal text in chunks. Some flags and width are parsed but not applied,
+     and the return value is not a standard character count. */
   char buf[4096];
   char *buf_ptr = buf;
   size_t pos = 0;
@@ -1106,6 +1130,9 @@ long atol(const char *nptr) { return strtol(nptr, NULL, 10); }
 double atof(const char *nptr) { return strtod(nptr, NULL); }
 
 long int strtol(const char *nptr, char **endptr, int base) {
+  /* Skip whitespace and a sign, infer octal/hex/decimal for base zero, then
+     accumulate digits until one is invalid for the chosen base. This simple
+     implementation does not perform the standard overflow checks. */
   long result = 0;
   int sign = 1;
   while (isspace(*nptr))
@@ -1186,6 +1213,9 @@ unsigned long int strtoul(const char *nptr, char **endptr, int base) {
 }
 
 double strtod(const char *nptr, char **endptr) {
+  /* Parse decimal integer and fraction parts, then scale by the optional
+     power of ten. Special values and full standard-library edge cases are
+     outside this simplified parser. */
   double result = 0.0;
   int sign = 1;
   while (isspace(*nptr))
@@ -1262,6 +1292,8 @@ static void qsort_swap(char *a, char *b, size_t size) {
 
 static void qsort_inner(char *base, size_t lo, size_t hi, size_t size,
                         int (*compar)(const void *, const void *)) {
+  /* Move the middle element to the first slot as pivot, partition smaller
+     elements to its left, then recursively sort the two remaining ranges. */
   if (lo >= hi)
     return;
   size_t mid = (lo + hi) / 2;
@@ -1403,6 +1435,8 @@ int iceil(double x) { return (int)ceil(x); }
 /* ChatGPT ended here */
 
 /* ===== time.h ===== */
+/* Time and process-environment functions in this runtime are limited;
+   their presence does not imply a complete hosted C implementation. */
 time_t time(time_t *tloc) {
   time_t t = 0;
   if (tloc)
@@ -1523,6 +1557,8 @@ int raise(int sig) {
 
 /* ===== setjmp.h ===== */
 __attribute__((naked, returns_twice)) int setjmp(jmp_buf env) {
+  /* Save the callee-saved i386 registers, the stack after this call returns,
+     and the return address. A normal return produces zero. */
   asm volatile("movl 4(%esp), %eax\n"
                "movl %ebx, 0(%eax)\n"
                "movl %esi, 4(%eax)\n"
@@ -1537,6 +1573,8 @@ __attribute__((naked, returns_twice)) int setjmp(jmp_buf env) {
 }
 
 __attribute__((naked, noreturn)) void longjmp(jmp_buf env, int val) {
+  /* Restore that saved context and jump to the saved return address. The C
+     contract requires setjmp to appear to return 1 when val was zero. */
   asm volatile("movl 4(%esp), %edx\n"
                "movl 8(%esp), %eax\n"
                "testl %eax, %eax\n"
@@ -1562,11 +1600,15 @@ typedef unsigned long long du_int;
 typedef long long di_int;
 typedef unsigned int su_int;
 
+/* Compiler runtime helper: i386 code may need software 64-bit division
+   because the freestanding link does not supply a system compiler runtime. */
 static du_int __udivmoddi4(du_int a, du_int b, du_int *rem) {
   du_int d = 0;
   du_int q = 0;
   du_int r = 0;
   unsigned int shift;
+  /* Binary long division: bring down one dividend bit per iteration, subtract
+     the divisor when possible, and append the resulting bit to the quotient. */
   for (shift = 0; shift < 64; shift++) {
     r = (r << 1) | (a >> 63);
     a = a << 1;

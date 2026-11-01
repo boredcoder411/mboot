@@ -1,3 +1,4 @@
+// Convenience umbrella for the application runtime and custom OS interfaces.
 #pragma once
 
 #include <assert.h>

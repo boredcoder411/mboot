@@ -1,3 +1,4 @@
+// ATA sector read interface.
 #pragma once
 
 #include <stdint.h>

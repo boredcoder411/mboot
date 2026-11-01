@@ -1,3 +1,4 @@
+// Floating-point characteristics for the target ABI.
 #pragma once
 
 #define FLT_RADIX 2

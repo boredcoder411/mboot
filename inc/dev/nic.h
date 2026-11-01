@@ -1,3 +1,4 @@
+// Network interface shared by hardware drivers and the protocol stack.
 #pragma once
 
 #include "dev/pci.h"

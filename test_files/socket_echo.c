@@ -1,3 +1,4 @@
+// Receive and echo UDP datagrams through a socket.
 #include "libc.h"
 
 int main(int argc, char **argv) {
@@ -10,6 +11,8 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  /* Bind the datagram socket to port 8 on the guest. Port fields use network
+     byte order, hence htons before handing the address to the kernel. */
   struct sockaddr_in addr;
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
@@ -27,6 +30,8 @@ int main(int argc, char **argv) {
     socklen_t peer_len = sizeof(peer);
     int n =
         recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr *)&peer, &peer_len);
+    /* recvfrom fills in the sender address, which becomes the destination
+       for the response. Each received datagram is echoed independently. */
     if (n > 0)
       sendto(fd, buf, (size_t)n, 0, (struct sockaddr *)&peer, peer_len);
   }

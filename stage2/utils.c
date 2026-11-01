@@ -1,7 +1,10 @@
+// Small freestanding memory and string helpers shared by kernel code.
 #include "utils.h"
 #include "dev/serial.h"
 
 /* ChatGPT started here */
+/* This kernel helper returns a boolean equality result, unlike the standard
+   C strncmp ordering convention. Callers must not treat it as libc strncmp. */
 bool strncmp(const char *a, const char *b, size_t n) {
   for (size_t i = 0; i < n; i++) {
     if (a[i] != b[i]) {
@@ -42,6 +45,7 @@ int strcasecmp(const char *s1, const char *s2) {
 }
 
 void hexdump(void *data, size_t size) {
+  /* Despite the name, the current format prints each byte in decimal. */
   uint8_t *ptr = (uint8_t *)data;
   for (size_t i = 0; i < size; i++) {
     serial_printf("%u ", ptr[i]);
@@ -54,5 +58,6 @@ float bytes_to_gb(uint64_t bytes) {
   return (float)(bytes / bytes_per_gb);
 }
 
+/* Packed BCD stores decimal tens in the high nibble and ones in the low. */
 uint8_t bcd_to_bin(uint8_t val) { return (val & 0x0F) + ((val / 16) * 10); }
 /* ChatGPT ended here */

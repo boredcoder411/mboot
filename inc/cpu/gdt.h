@@ -1,3 +1,4 @@
+// Flat segment selectors, TSS definitions and GDT setup.
 #pragma once
 
 #include <stdint.h>

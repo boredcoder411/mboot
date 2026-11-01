@@ -1,3 +1,4 @@
+// Character classification and case conversion declarations.
 #pragma once
 
 int isalnum(int c);

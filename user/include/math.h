@@ -1,3 +1,4 @@
+// Math declarations and constants provided by the freestanding runtime.
 #pragma once
 
 /* ChatGPT started here */

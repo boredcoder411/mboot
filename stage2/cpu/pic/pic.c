@@ -1,3 +1,4 @@
+// Configure and mask the legacy 8259 interrupt controllers; their vectors are remapped away from CPU exceptions.
 #include "cpu/pic/pic.h"
 #include "io.h"
 #include <stdbool.h>
@@ -9,6 +10,7 @@ void pic_clear_mask(size_t i) {
   outb(port, value);
 
   if (i >= 8) {
+    /* A slave IRQ reaches the CPU through master IRQ2, so unmask both. */
     uint8_t master = inb(PIC1_DATA) & ~(1 << 2);
     outb(PIC1_DATA, master);
   }
@@ -28,7 +30,11 @@ bool pic_check_mask(size_t i) {
   return (mask & bit) != 0;
 }
 
+/* Move legacy IRQs above the processor exception vectors and configure
+   the slave PIC behind the master's cascade line. */
 void pic_remap() {
+  /* Preserve the caller's masks while initialization command words reset the
+     PIC configuration, then restore those masks after remapping vectors. */
   uint8_t mask1 = inb(PIC1_DATA);
   uint8_t mask2 = inb(PIC2_DATA);
 
@@ -49,6 +55,7 @@ void pic_remap() {
   outb(PIC2_DATA, mask2);
 }
 
+/* Interrupts from the slave must be acknowledged on both controllers. */
 void pic_send_eoi(size_t i) {
   if (i >= 8) {
     outb(PIC2, PIC_EOI);

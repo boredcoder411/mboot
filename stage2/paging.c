@@ -1,3 +1,4 @@
+// x86 page-directory setup and per-task mappings. Identity mappings and ring-0 tasks mean these tables are not a security boundary.
 #include "paging.h"
 #include "dev/serial.h"
 #include "mem.h"
@@ -38,9 +39,13 @@ static inline void write_cr4(uint32_t value) {
 }
 
 void paging_init(void) {
+  /* Page directories must be 4 KiB aligned; keep enough heap space to
+     align the returned address without depending on kmalloc's alignment. */
   uintptr_t raw_page_directory = (uintptr_t)kmalloc(PAGE_SIZE * 2);
   page_directory = (uint32_t *)align_up_uintptr(raw_page_directory, PAGE_SIZE);
 
+  /* Map every 4 MiB virtual range to the same physical address. This is an
+     address-space mapping, not a claim that all 4 GiB are backed by RAM. */
   for (uint32_t i = 0; i < PAGE_DIRECTORY_ENTRIES; ++i) {
     uint32_t phys = i * FOUR_MIB;
     page_directory[i] =
@@ -73,12 +78,17 @@ uint32_t paging_create_directory(void) {
 
 void paging_map_page(uint32_t pd, uint32_t vaddr, uint32_t paddr,
                      uint32_t flags) {
+  /* A 32-bit virtual address is split into a 10-bit directory index, a
+     10-bit table index and a 12-bit offset. Only the page-aligned physical
+     address goes in the entry; the low bits hold permissions and present. */
   uint32_t dir_idx = vaddr >> 22;
   uint32_t table_idx = (vaddr >> 12) & 0x3FF;
 
   uint32_t *dir = (uint32_t *)pd;
   uint32_t entry = dir[dir_idx];
 
+  /* Split the identity-mapped large page before replacing one 4 KiB slot;
+     retain identity mappings for the other slots in this directory entry. */
   if (entry & PAGE_SIZE_4MB) {
     uint32_t table = alloc_aligned_page();
     uint32_t phys_base = entry & 0xFFC00000U;
@@ -95,6 +105,8 @@ void paging_map_page(uint32_t pd, uint32_t vaddr, uint32_t paddr,
 }
 
 uint32_t paging_clone_directory(uint32_t parent_pd) {
+  /* Copy marked application pages eagerly; shared large kernel mappings
+     come from paging_create_directory. There is no copy-on-write. */
   uint32_t new_dir = paging_create_directory();
   uint32_t *parent = (uint32_t *)parent_pd;
 
@@ -109,6 +121,9 @@ uint32_t paging_clone_directory(uint32_t parent_pd) {
       if (!(pte & PAGE_PRESENT) || !(pte & PAGE_USER))
         continue;
 
+      /* Reconstruct the virtual address from its indices and copy the page
+         contents to a new physical page. PAGE_USER is used here as the mark
+         for pages to clone, not as an effective ring-0 protection boundary. */
       uint32_t vaddr = (dir_idx << 22) | (table_idx << 12);
       uint32_t new_page = alloc_aligned_page();
       memcpy((void *)new_page, (void *)(pte & 0xFFFFF000U), PAGE_SIZE);
@@ -122,6 +137,8 @@ uint32_t paging_clone_directory(uint32_t parent_pd) {
 void paging_switch(uint32_t pd) { write_cr3(pd); }
 
 void paging_free_directory(uint32_t pd) {
+  /* This clears mappings but does not reclaim their backing allocations or
+     the page tables themselves. Repeated fork/exec can therefore leak RAM. */
   if (!pd || pd == (uint32_t)page_directory)
     return;
   uint32_t *dir = (uint32_t *)pd;

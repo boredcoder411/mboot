@@ -1,3 +1,4 @@
+// Serial output and kernel logging interface.
 #pragma once
 
 #define ANSI_RESET "\033[0m"

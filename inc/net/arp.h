@@ -1,3 +1,4 @@
+// ARP packet formats and address-resolution interface.
 #pragma once
 
 #include <stdint.h>

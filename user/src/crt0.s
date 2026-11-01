@@ -1,3 +1,4 @@
+; Application entry: turn the initial argc/argv stack into a C main call and pass its result to exit.
 [bits 32]
 
 extern main
@@ -16,6 +17,7 @@ _start:
 
     push ebx              ; argv
     push eax              ; argc
+    ; If main returns, forward its result to the OS exit syscall wrapper.
     call main
     push eax
     call exit

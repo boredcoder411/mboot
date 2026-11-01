@@ -1,3 +1,4 @@
+// ICMP echo-request transmission and echo-reply delivery for the ping demo.
 #include "net/icmp.h"
 #include "dev/serial.h"
 #include "mem.h"
@@ -6,12 +7,16 @@
 #include "net/socket.h"
 #include "utils.h"
 
+/* ICMP handling checks the incoming message and supports echo traffic used
+   by the ping demonstration; this is not a complete ICMP implementation. */
 void icmp_process_packet(uint8_t *frame, uint16_t frame_len, ipv4_hdr *ipv4,
                          uint8_t *icmp_data, uint16_t icmp_len) {
   if (icmp_len < sizeof(icmp_echo_hdr))
     return;
 
   icmp_echo_hdr *icmp = (icmp_echo_hdr *)icmp_data;
+  /* Only replies are dispatched here: incoming echo requests are not
+     answered, and the received ICMP checksum is not validated here. */
   if (icmp->type == ICMP_ECHO_REPLY && icmp->code == 0) {
     INFO("ICMP",
          "Echo reply from %d.%d.%d.%d id=0x%04x seq=%u payload=%u bytes",
@@ -41,8 +46,12 @@ int icmp_send_echo(const uint8_t src_ip[4], const uint8_t dst_ip[4],
   uint8_t *icmp_payload = (uint8_t *)(icmp + 1);
   memcpy(icmp_payload, payload, sizeof(payload) - 1);
   icmp->checksum = 0;
+  /* Calculate over the entire ICMP message with its checksum field zeroed.
+     Identifier and sequence let the receiver associate replies with a socket. */
   icmp->checksum = htons(ipv4_checksum(icmp, icmp_len));
 
+  /* Resolve the destination on the local subnet, or the gateway when the
+     destination is remote. The IP destination remains dst_ip in both cases. */
   uint8_t next_hop[6];
   if (ipv4_on_local_network(dst_ip)) {
     if (!arp_resolve(dst_ip, next_hop)) {

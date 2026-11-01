@@ -1,3 +1,4 @@
+// Decode keyboard input and route characters to the active terminal; Alt+F1 through Alt+F4 select terminals.
 #include "dev/keyboard.h"
 #include "cpu/interrupts/irq.h"
 #include "cpu/pic/pic.h"
@@ -44,7 +45,11 @@ uint8_t keyboard_read_key() {
 }
 
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+/* Decode make/break scancodes and modifier state before passing printable
+   characters and terminal-switch keys to the active TTY. */
 void keyboard_handler(registers_t *r) {
+  /* Port 0x60 contains the next PS/2 scancode. Set-1 break codes have their
+     high bit set; modifier releases must be handled before filtering them. */
   uint8_t scancode = inb(0x60);
 
   switch (scancode) {
@@ -82,12 +87,16 @@ void keyboard_handler(registers_t *r) {
     return;
   }
 
+  /* The lookup tables encode this project's keyboard layout. They provide
+     simple Shift translation rather than a full layout or compose engine. */
   const char *map = shifted ? shift_scancode_map : scancode_map;
   char ascii_char = map[scancode];
 
   if (ascii_char) {
     tty_handle_key(scancode, ascii_char);
 
+    /* Keep a second circular buffer for the legacy keyboard_read_key API;
+       the TTY has its own independent input queue. */
     uint16_t next_head = (keyboard_buffer_head + 1) % KEYBOARD_BUFFER_SIZE;
     if (next_head != keyboard_buffer_tail) { // Buffer not full
       keyboard_buffer[keyboard_buffer_head] = ascii_char;

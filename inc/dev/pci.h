@@ -1,3 +1,4 @@
+// PCI configuration-space access and device enumeration.
 #pragma once
 
 #include <stdbool.h>

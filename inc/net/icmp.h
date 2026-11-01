@@ -1,3 +1,4 @@
+// ICMP packet definitions and handler interface.
 #pragma once
 
 #include "net/ipv4.h"

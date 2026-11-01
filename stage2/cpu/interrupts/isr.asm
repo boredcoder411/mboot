@@ -1,3 +1,4 @@
+; Exception and software-interrupt stubs build a common register frame for the C dispatcher.
 ; check https://wiki.osdev.org/Interrupts_Tutorial for source
 [bits 32]
 
@@ -11,6 +12,8 @@
 [global isr_stub_table]
 [extern isr_handler]
 
+; Some CPU exceptions already push an error code. Other stubs push zero so
+; all handlers see the same int_no/err_code layout in registers_t.
 %macro isr_err_stub 1
 _isr%+%1:
     push %1
@@ -77,6 +80,7 @@ isr_no_err_stub 29
 isr_err_stub    30
 isr_no_err_stub 31
 
+; The register order here must match inc/io.h and the matching pop sequence.
 isr_common:
     pusha_c
     mov ax, 0x10

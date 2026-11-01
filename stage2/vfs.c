@@ -1,3 +1,4 @@
+// Route per-task file descriptors to file, terminal and socket backends, including descriptor inheritance across fork.
 #include "vfs.h"
 #include "cpu/cpuid.h"
 #include "dev/serial.h"
@@ -7,6 +8,8 @@
 #include "net/udp.h"
 #include "scheduler.h"
 
+/* A descriptor is local to a task; its table points to a backend handle.
+   Negative handle ranges distinguish virtual devices from disk files. */
 static vfs_driver_t *current_driver = NULL;
 
 #define VFS_EMPTY_HANDLE (-1)
@@ -209,6 +212,8 @@ static int tty_handle_id(int handle) {
 }
 
 static int cpuinfo_read(int handle, size_t size, void *dst) {
+  /* Each open cpuinfo handle tracks its own offset, allowing a caller to
+     read the generated text in pieces and then observe end-of-file. */
   int id = cpuinfo_handle_id(handle);
   if (id < 0 || !cpuinfo_files[id].used || !dst)
     return -1;
@@ -337,6 +342,8 @@ static int device_write(int handle, const void *src, size_t size) {
   return -1;
 }
 
+/* Device paths are intercepted here; other names go to the registered
+   filesystem driver. These functions work with handles, not task FDs. */
 int file_open(const char *path) {
   int device = device_open(path);
   if (device != VFS_EMPTY_HANDLE)
@@ -404,6 +411,7 @@ int vfs_open(const char *path) {
   return fd;
 }
 
+/* Install a backend handle in the current task and return the small FD. */
 int vfs_attach_handle(int handle) {
   fd_table_t *table = scheduler_current_fds();
   if (!table)
@@ -467,6 +475,8 @@ int vfs_close(int fd) {
   return result;
 }
 
+/* Replacing a descriptor closes its previous handle and takes another
+   backend reference so each descriptor can later be closed independently. */
 int vfs_dup2(int oldfd, int newfd) {
   fd_table_t *table = scheduler_current_fds();
   if (!table || oldfd < 0 || newfd < 0 || oldfd >= MAX_FDS_PER_PROCESS ||
@@ -476,6 +486,8 @@ int vfs_dup2(int oldfd, int newfd) {
   if (oldfd == newfd)
     return newfd;
 
+  /* Standard descriptors have an extra restriction for terminal handles:
+     they cannot be rebound to a different terminal through this path. */
   if (newfd <= 2) {
     int tty = tty_handle_id(table->handle[oldfd]);
     if (tty >= 0 && tty != scheduler_current_tty())
@@ -511,6 +523,7 @@ void vfs_init_fds(fd_table_t *table, int tty) {
   vfs_bind_tty(table, tty);
 }
 
+/* Standard input, output and error start on the task's selected terminal. */
 void vfs_bind_tty(fd_table_t *table, int tty) {
   if (!table)
     return;
@@ -524,6 +537,8 @@ void vfs_bind_tty(fd_table_t *table, int tty) {
   table->handle[2] = handle;
 }
 
+/* Fork copies descriptor slots and increments backend reference counts;
+   inherited handles can therefore refer to the same underlying object. */
 void vfs_fork_fds(fd_table_t *child) {
   fd_table_t *parent = scheduler_current_fds();
   if (!parent || !child)

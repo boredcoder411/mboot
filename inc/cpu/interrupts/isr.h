@@ -1,3 +1,4 @@
+// CPU exception and software interrupt registration.
 #pragma once
 
 #define EXCEPTION_ISRS 32

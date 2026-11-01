@@ -1,3 +1,4 @@
+-- Open another terminal device and write to it through Lua I/O.
 print("before open")
 local tty2, err = io.open("/dev/tty2", "w")
 print("after open", tty2, err)

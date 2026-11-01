@@ -1,3 +1,4 @@
+// Single-CPU round-robin tasks, saved interrupt frames, blocking, and process creation/replacement. Applications still execute at ring 0.
 #include "scheduler.h"
 #include "cpu/gdt.h"
 #include "dev/serial.h"
@@ -36,6 +37,10 @@ static uint32_t page_align_up(uint32_t x) {
 }
 
 static void *alloc_user_page(void) {
+  /* kmalloc only promises its own small alignment, whereas a page table
+     stores a physical address with its low 12 bits reserved for flags.
+     Overallocate and round up so the mapped address is page aligned. The
+     original allocation pointer is not retained for later freeing. */
   uintptr_t raw = (uintptr_t)kmalloc(PAGE_SIZE * 2);
   void *page = (void *)align_up_uintptr(raw, PAGE_SIZE);
   memset(page, 0, PAGE_SIZE);
@@ -60,6 +65,8 @@ tcb_t *scheduler_find_by_pid(int pid) {
   return NULL;
 }
 
+/* Waiters sleep on the PID encoded as a wait object; exit wakes that key.
+   This small interface returns the exit code directly and does not reap. */
 int scheduler_wait_pid(int pid) {
   if (pid < 0)
     return -1;
@@ -87,6 +94,8 @@ uint32_t scheduler_exec_replace(uint32_t entry, const user_segment_t *segments,
   if (!segments || segment_count <= 0)
     return 0;
 
+  /* The caller's argument pointers belong to the old image, so copy the
+     strings before switching page directories. */
   char *kargv[MAX_TASK_ARGS];
   int kargc = 0;
   for (int i = 0; i < argc && i < MAX_TASK_ARGS; i++) {
@@ -99,6 +108,9 @@ uint32_t scheduler_exec_replace(uint32_t entry, const user_segment_t *segments,
   }
 
   uint32_t old_cr3 = current_task->cr3;
+  /* This temporary clone is created and immediately cleared by the current
+     implementation. It is not the new executable image, and cleanup does
+     not reclaim all allocations made for the clone. */
   uint32_t clone_tmp = paging_clone_directory(old_cr3);
   (void)clone_tmp;
   paging_free_directory(clone_tmp);
@@ -107,6 +119,8 @@ uint32_t scheduler_exec_replace(uint32_t entry, const user_segment_t *segments,
 
   uint32_t image_base = 0xFFFFFFFFU;
   uint32_t image_end = 0;
+  /* Determine one page-aligned span enclosing every PT_LOAD segment. This
+     also allocates pages for any holes between segments. */
   for (int i = 0; i < segment_count; i++) {
     uint32_t seg_base = page_align_down(segments[i].vaddr);
     uint32_t seg_end = page_align_up(segments[i].vaddr + segments[i].memsz);
@@ -118,6 +132,8 @@ uint32_t scheduler_exec_replace(uint32_t entry, const user_segment_t *segments,
   if (image_base >= image_end)
     return 0;
 
+  /* Allocate the full page-aligned span, including gaps between segments.
+     Zeroed pages also supply the ELF memory beyond each segment's filesz. */
   uint32_t page_count = (image_end - image_base) / PAGE_SIZE;
   uint32_t *image_pages = (uint32_t *)kmalloc(page_count * sizeof(uint32_t));
   if (!image_pages)
@@ -129,6 +145,8 @@ uint32_t scheduler_exec_replace(uint32_t entry, const user_segment_t *segments,
                     PAGE_USER | PAGE_WRITABLE);
   }
 
+  /* The new directory is not active yet. Copy through the physical page
+     addresses recorded in image_pages, splitting writes at page boundaries. */
   for (int i = 0; i < segment_count; i++) {
     uint32_t dst_vaddr = segments[i].vaddr;
     const uint8_t *src = (const uint8_t *)segments[i].data;
@@ -146,6 +164,8 @@ uint32_t scheduler_exec_replace(uint32_t entry, const user_segment_t *segments,
     }
   }
 
+  /* The stack allocation is mapped at the same numeric address in the new
+     directory. A forked child has stack_base == 0 and needs a fresh stack. */
   uint32_t stack_base = current_task->stack_base;
   if (stack_base == 0) {
     uint8_t *new_stack = (uint8_t *)kmalloc(TASK_STACK_SIZE);
@@ -159,6 +179,8 @@ uint32_t scheduler_exec_replace(uint32_t entry, const user_segment_t *segments,
     paging_map_page(new_cr3, addr, addr, PAGE_USER | PAGE_WRITABLE);
   }
 
+  /* After the saved registers and iret frame are consumed, crt0 sees argc
+     followed by argv pointers and a null terminator at the top of stack. */
   uint32_t *sp = (uint32_t *)(stack_base + TASK_STACK_SIZE);
   *--sp = 0;
   *--sp = 0;
@@ -181,6 +203,8 @@ uint32_t scheduler_exec_replace(uint32_t entry, const user_segment_t *segments,
 
   uint32_t new_sp = (uint32_t)sp;
 
+  /* Commit the replacement only after building its image and initial frame.
+     The task keeps its PID and, unless a TTY is supplied, its descriptors. */
   current_task->cr3 = new_cr3;
   current_task->esp = new_sp;
   if (tty >= 0) {
@@ -224,6 +248,8 @@ int scheduler_set_tty(int tty) {
 }
 
 void scheduler_init(void) {
+  /* The boot context becomes the idle task and anchors the circular list.
+     Its stack pointer is saved on its first timer interrupt or switch. */
   current_task = (tcb_t *)kmalloc(sizeof(tcb_t));
   current_task->esp = 0;
   current_task->state = TASK_RUNNING;
@@ -240,6 +266,8 @@ void scheduler_init(void) {
   INFO("SCHED", "Scheduler initialized (idle PID %u)", current_task->pid);
 }
 
+/* Build an artificial interrupt-return frame so the first switch enters
+   func just as if it had been interrupted and then resumed. */
 int create_task(void (*func)(void)) {
   tcb_t *tcb = (tcb_t *)kmalloc(sizeof(tcb_t));
   uint8_t *stack = (uint8_t *)kmalloc(TASK_STACK_SIZE);
@@ -304,6 +332,8 @@ int create_user_task_from_segments(uint32_t entry,
   uint8_t *stack = (uint8_t *)kmalloc(TASK_STACK_SIZE);
   uint32_t dir = paging_create_directory();
 
+  /* As in exec, copy each segment to zero-filled physical pages. Zero fill
+     provides the ELF memory beyond filesz, including typical .bss data. */
   uint32_t image_base = 0xFFFFFFFFU;
   uint32_t image_end = 0;
   for (int i = 0; i < segment_count; i++) {
@@ -348,6 +378,9 @@ int create_user_task_from_segments(uint32_t entry,
     paging_map_page(dir, addr, addr, PAGE_USER | PAGE_WRITABLE);
   }
 
+  /* Below argc/argv, synthesize the register frame expected by irq.asm.
+     iret consumes entry, code selector and EFLAGS (0x202 enables IRQs),
+     leaving argc at the top of the stack for user/src/crt0.s. */
   uint32_t *sp = (uint32_t *)(stack + TASK_STACK_SIZE);
 
   *--sp = 0;
@@ -401,6 +434,7 @@ static void scheduler_schedule(void) {
   if (!current_task)
     return;
 
+  /* Walk the circular list once, skipping blocked and exited tasks. */
   tcb_t *next = current_task;
   do {
     next = next->next;
@@ -416,6 +450,8 @@ static void scheduler_schedule(void) {
     current_task->state = TASK_RUNNING;
   }
 
+  /* CR3 must match the task before the assembly code resumes its stack and
+     instruction pointer; writing it also refreshes address translations. */
   if (current_task->cr3 != paging_get_directory()) {
     paging_switch(current_task->cr3);
   }
@@ -425,6 +461,7 @@ uint32_t scheduler_tick(registers_t *r) {
   if (!current_task)
     return (uint32_t)r;
 
+  /* The IRQ stub restores whichever frame pointer this function returns. */
   current_task->esp = (uint32_t)r;
 
   if (current_task->state == TASK_RUNNING) {
@@ -468,6 +505,8 @@ void scheduler_wake(void *wait_obj) {
   } while (t != idle_task);
 }
 
+/* Clone marked pages and the saved syscall frame. The copied frame returns
+   zero in the child, while the dispatcher returns the child PID to parent. */
 int fork_current(registers_t *r) {
   if (!current_task || current_task == idle_task)
     return -1;
@@ -484,6 +523,8 @@ int fork_current(registers_t *r) {
   uint32_t frame_vaddr = user_esp - 48;
 
   uint32_t *cdir = (uint32_t *)dir;
+  /* The child's directory is not active yet. Walk its page tables to find
+     the physical copy of the stack page and write the child's frame there. */
   uint32_t pde = cdir[frame_vaddr >> 22];
   uint32_t *ctab = (uint32_t *)(pde & 0xFFFFF000U);
   uint32_t frame_paddr = ctab[(frame_vaddr >> 12) & 0x3FF] & 0xFFFFF000U;

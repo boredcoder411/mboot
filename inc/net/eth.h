@@ -1,3 +1,4 @@
+// Ethernet frame definitions and packet interface.
 #pragma once
 
 #include <stdint.h>

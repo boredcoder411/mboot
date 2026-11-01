@@ -1,3 +1,4 @@
+; Kernel entry and CPU helpers used before the C initialization path.
 [bits 32]
 [extern loader_start]
 [global _start]

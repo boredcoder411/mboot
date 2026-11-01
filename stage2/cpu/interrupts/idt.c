@@ -1,3 +1,4 @@
+// Install interrupt gates and dispatch the custom int 0x80 system-call ABI. Register assignments must match user/src/libc.c.
 #include "cpu/interrupts/idt.h"
 #include "dev/keyboard.h"
 #include "dev/serial.h"
@@ -12,6 +13,8 @@
 extern void syscall_handler();
 
 uint32_t syscall_dispatch(registers_t *r) {
+  /* EAX selects the call; EBX, ECX, EDX, ESI and EDI carry arguments.
+     Normally the saved EAX becomes the return value on interrupt return. */
   switch (r->eax) {
   case 1: { // sys_exit
     uint32_t exit_code = r->ebx;
@@ -36,6 +39,8 @@ uint32_t syscall_dispatch(registers_t *r) {
     uint32_t fd = r->ebx;
     INFO("SYSCALL", "write(fd=%u, len=%u)", fd, r->edx);
     r->eax = vfs_write(fd, (const void *)r->ecx, r->edx);
+    /* Mirror successfully written bytes to serial for headless debugging,
+       regardless of the backend that handled the original write. */
     if ((int)r->eax > 0 && r->ecx) {
       const char *buf = (const char *)r->ecx;
       for (uint32_t i = 0; i < r->eax; i++)
@@ -85,6 +90,7 @@ uint32_t syscall_dispatch(registers_t *r) {
          tty);
     uint32_t new_sp = exec_elf(pathname, argc, argv, tty, r);
     if (new_sp) {
+      /* Restore the new image's frame instead of returning to the caller. */
       INFO("SYSCALL", "exec replaced (new sp 0x%X)", new_sp);
       return new_sp;
     }
@@ -117,6 +123,8 @@ uint32_t syscall_dispatch(registers_t *r) {
     break;
   }
   case 300: { // sys_socket
+    /* A socket is a backend handle until attached to this task's FD table.
+       If the table is full, release the handle to avoid leaking a reference. */
     int handle = socket_create((int)r->ebx, (int)r->ecx, (int)r->edx);
     r->eax = socket_handle_valid(handle) ? vfs_attach_handle(handle) : -1;
     if ((int)r->eax < 0 && socket_handle_valid(handle))
@@ -159,6 +167,8 @@ idt_entry_t idt[IDT_ENTRIES];
 idt_ptr_t idt_ptr;
 
 void idt_set_gate(uint8_t num, uint32_t base, uint16_t sel, uint8_t flags) {
+  /* Hardware stores the handler address in two 16-bit halves alongside the
+     segment selector and gate attributes. */
   idt[num].base_low = base & 0xFFFF;
   idt[num].sel = sel;
   idt[num].always0 = 0;
@@ -174,6 +184,8 @@ void idt_init() {
     idt_set_gate(i, 0, 0, 0);
   }
 
+  /* Vector 0x80 enters the assembly syscall stub; 0xEF sets a present trap
+     gate with DPL 3, although current applications execute at ring 0. */
   idt_set_gate(0x80, (uint32_t)syscall_handler, 0x08, 0xEF);
 
   idt_load((uint32_t)&idt_ptr);

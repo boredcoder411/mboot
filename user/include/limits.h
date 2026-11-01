@@ -1,3 +1,4 @@
+// Integer type limits for the 32-bit target.
 #pragma once
 
 #define CHAR_BIT 8

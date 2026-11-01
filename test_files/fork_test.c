@@ -1,9 +1,12 @@
+// Exercise fork and distinguish the parent and child return values.
 #include "libc.h"
 
 int main(void) {
   write(1, "fork_test: before fork\n", 23);
   int pid = fork();
 
+  /* Both processes continue here: fork returns zero in the child and the
+     child's PID in the parent. Scheduling determines their print order. */
   if (pid == 0) {
     write(1, "fork_test: I am the child\n", 26);
   } else if (pid > 0) {
@@ -13,6 +16,7 @@ int main(void) {
     int p = pid;
     if (p == 0)
       buf[n++] = '0';
+    /* Extract decimal digits backwards, then reverse them for printing. */
     while (p > 0) {
       buf[n++] = '0' + (p % 10);
       p /= 10;

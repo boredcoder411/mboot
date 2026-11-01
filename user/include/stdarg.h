@@ -1,3 +1,4 @@
+// Variadic argument macros backed by compiler builtins.
 #pragma once
 
 typedef __builtin_va_list va_list;

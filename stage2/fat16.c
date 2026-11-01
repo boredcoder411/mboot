@@ -1,3 +1,4 @@
+// Read-only FAT16 backend: locate the partition, interpret directory entries and follow cluster chains to read root-directory files.
 #include "fat16.h"
 #include "dev/disk.h"
 #include "dev/serial.h"
@@ -12,6 +13,10 @@ static uint32_t g_part_offset = 0;
 static fat16_file_t open_files[MAX_OPEN_FILES];
 
 bool read_bytes(uint32_t part_offset, void *buf, size_t len) {
+  /* ATA reads whole 512-byte sectors, but filesystem structures and file
+     offsets need not be sector aligned. Read the enclosing sectors into a
+     temporary buffer and copy just the requested slice. The disk API does
+     not return transfer errors here, so success does not prove a good read. */
   uint32_t start_lba = part_offset / SECTOR_SIZE;
   uint32_t end_lba = (part_offset + len - 1) / SECTOR_SIZE;
   uint8_t *tmp = kmalloc((end_lba - start_lba + 1) * SECTOR_SIZE);
@@ -25,6 +30,8 @@ bool read_bytes(uint32_t part_offset, void *buf, size_t len) {
 }
 
 uint32_t BPB_FAT_addr(const BPB_t *bpb) {
+  /* Offsets in these helpers are relative to the partition: reserved boot
+     sectors first, then all FAT copies, then the fixed FAT16 root area. */
   return bpb->RsvdSecCnt * bpb->BytsPerSec;
 }
 
@@ -38,12 +45,17 @@ uint32_t BPB_Data_addr(const BPB_t *bpb) {
 
 uint16_t get_next_cluster(uint32_t part_offset, const BPB_t *bpb,
                           uint16_t cluster) {
+  /* A FAT16 entry is two bytes. Its value is the next cluster number, or an
+     end-of-chain marker (0xFFF8 and above) for the last cluster. */
   uint16_t val;
   read_bytes(part_offset + BPB_FAT_addr(bpb) + cluster * 2, &val, sizeof(val));
   return val;
 }
 
 void get_lfn_name(lfn_entry_t *lfn_entries, int count, char *out, int outsize) {
+  /* Long-name entries precede the short entry in reverse order. Each holds
+     13 UTF-16 code units in three fields; this code truncates each to one
+     byte rather than implementing general Unicode conversion. */
   int pos = 0;
   for (int i = count - 1; i >= 0; i--) {
     bool done = false;
@@ -110,6 +122,8 @@ void get_file_name(dir_t *dir, lfn_entry_t *lfn_entries, int lfn_count,
   }
 }
 
+/* Diagnostic directory traversal can recurse; ordinary open below performs
+   a root-directory filename lookup rather than general path traversal. */
 void read_directory(const BPB_t *bpb, uint32_t part_offset,
                     uint16_t start_cluster, const char *prefix) {
   uint32_t cluster_size = bpb->BytsPerSec * bpb->SecPerClus;
@@ -198,6 +212,8 @@ static inline uint32_t cluster_offset(uint16_t cluster) {
   return g_part_offset + BPB_Data_addr(&g_bpb) + (cluster - 2) * cluster_size;
 }
 
+/* FAT16 stores its root directory separately from the data cluster chain.
+   Accumulate long-name entries until their associated short entry appears. */
 static bool find_file_in_dir(uint16_t start_cluster, const char *target_name,
                              dir_t *out_dir) {
   uint32_t cluster_size = g_bpb.BytsPerSec * g_bpb.SecPerClus;
@@ -331,6 +347,8 @@ static int fat16_read(int fd, void *buffer, size_t size) {
   if (size > remaining)
     size = remaining;
 
+  /* Walk from the first cluster to the cluster containing the current file
+     offset, then copy across cluster boundaries up to EOF or the request. */
   uint16_t cluster = file->start_cluster;
   uint32_t skip = file->offset;
   uint32_t skip_clusters = skip / cluster_size;
@@ -350,6 +368,9 @@ static int fat16_read(int fd, void *buffer, size_t size) {
   size_t bytes_read = 0;
   size_t to_read = size;
 
+  /* Each iteration copies the remainder of this cluster or the remainder of
+     the request, whichever is shorter. Only the first cluster can start at a
+     nonzero offset; later clusters begin at byte zero. */
   while (to_read > 0 && cluster < 0xFFF8) {
     if (!read_bytes(cluster_offset(cluster), tmp, cluster_size))
       break;
@@ -393,6 +414,8 @@ void fat16_init() {
     return;
   }
 
+  /* Find the first recognized FAT16 partition in the four MBR entries.
+     Its start LBA is converted to a byte offset for subsequent reads. */
   uint32_t start_lba = 0;
   for (int i = 0; i < 4; i++) {
     uint8_t *entry = mbr + 446 + i * 16;

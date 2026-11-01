@@ -1,3 +1,4 @@
+// Backend operation table and per-process descriptor routing interface.
 #pragma once
 
 #include "fd.h"

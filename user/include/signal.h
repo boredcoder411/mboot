@@ -1,3 +1,4 @@
+// Signal constants and runtime-facing declarations.
 #pragma once
 
 typedef int sig_atomic_t;

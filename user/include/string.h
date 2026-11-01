@@ -1,3 +1,4 @@
+// Memory and string operation declarations.
 #pragma once
 
 #include <stddef.h>

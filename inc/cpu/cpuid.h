@@ -1,3 +1,4 @@
+// CPU identification data and initialization interface.
 #pragma once
 
 #include <stddef.h>

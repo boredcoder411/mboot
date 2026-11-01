@@ -1,3 +1,4 @@
+// Hardware IRQ registration and dispatcher interface.
 #pragma once
 
 #include "io.h"

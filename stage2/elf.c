@@ -1,3 +1,4 @@
+// Read ELF images from FAT16 and describe loadable segments to the scheduler. The direct-load and trampoline helpers are older paths.
 #include "elf.h"
 #include "dev/serial.h"
 #include "fat16.h"
@@ -7,6 +8,8 @@
 #include "scheduler.h"
 #include "vfs.h"
 
+/* Legacy direct loader: copy PT_LOAD bytes to their virtual addresses and
+   zero the rest of each segment. Current spawn/exec use per-task mappings. */
 int load_elf(void *file_data) {
   INFO("ELF", "Loading elf file");
   Elf32_Ehdr *eh = (Elf32_Ehdr *)file_data;
@@ -32,6 +35,8 @@ int load_elf(void *file_data) {
 }
 
 int spawn_elf(const char *path, int argc, char **argv, int tty) {
+  /* Segment data points into buf while the scheduler copies it into the new
+     task's pages. This loader only checks the ELF magic, not all bounds. */
   int file = file_open(path);
   if (file < 0) {
     INFO("ELF", "error: could not find %s", path);
@@ -50,6 +55,8 @@ int spawn_elf(const char *path, int argc, char **argv, int tty) {
     return -1;
   }
 
+  /* Program headers describe loadable memory, unlike section headers used
+     primarily by linkers and debuggers. Keep pointers into buf until copied. */
   user_segment_t *segments =
       (user_segment_t *)kmalloc(eh->phnum * sizeof(user_segment_t));
   int segment_count = 0;
@@ -74,12 +81,16 @@ int spawn_elf(const char *path, int argc, char **argv, int tty) {
     return -1;
   }
 
+  /* The scheduler creates a task and copies each segment into mapped pages.
+     This spawn path currently retains buf and segments after that call. */
   return create_user_task_from_segments(eh->entry, segments, segment_count,
                                         argc, argv, tty);
 }
 
 uint32_t exec_elf(const char *path, int argc, char **argv, int tty,
                   registers_t *r) {
+  /* A successful replacement returns a new saved stack to the syscall path;
+     execution resumes at the new entry point rather than after exec. */
   int file = file_open(path);
   if (file < 0) {
     INFO("ELF", "error: could not find %s", path);

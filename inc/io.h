@@ -1,9 +1,13 @@
+// Port I/O declarations and the register frame shared with interrupt assembly.
 #pragma once
 
 #include <stdint.h>
 
 #define SERIAL_PORT 0x3F8
 
+/* Assembly pushes these registers in reverse order, leaving EDI at the
+   lowest address. ESP and SS are only pushed by the CPU on a privilege
+   change; ordinary ring-0 interrupts do not have valid values for them. */
 typedef struct {
   uint32_t edi, esi, ebp, edx, ecx, ebx, eax;
   uint32_t int_no, err_code;

@@ -1,3 +1,4 @@
+// Assertion macro and failure handler; NDEBUG disables evaluation.
 #pragma once
 
 #ifndef NDEBUG

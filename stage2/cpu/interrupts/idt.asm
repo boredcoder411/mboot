@@ -1,3 +1,4 @@
+; Assembly helpers for installing the interrupt descriptor table.
 [bits 32]
 [global idt_load]
 [global syscall_handler]
@@ -28,6 +29,8 @@ idt_load:
   lidt [eax]
   ret
 
+; Create the same register-frame shape as an IRQ. The C dispatcher returns
+; the frame to restore; exec can return a different frame for the new image.
 syscall_handler:
     push 0
     push 0

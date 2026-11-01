@@ -1,3 +1,4 @@
+; Legacy ELF entry helper; current task creation uses scheduler-built interrupt frames.
 ; Build the standard i386 ELF entry stack layout, then jump to entry point.
 ; This matches what Linux does at _start so the same binary works on both.
 ;

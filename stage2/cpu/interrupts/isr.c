@@ -1,3 +1,4 @@
+// Dispatch CPU exceptions and software interrupts from the assembly stubs.
 #include "cpu/interrupts/isr.h"
 #include "cpu/interrupts/idt.h"
 #include "dev/serial.h"
@@ -37,6 +38,8 @@ char *exceptions[32] = {"Divide by zero",
                         "RESERVED",
                         "RESERVED"};
 
+/* Exceptions are currently fatal: report the saved instruction location
+   and error code over serial, then halt rather than attempt recovery. */
 void isr_handler(registers_t *r) {
   ERROR("EXCEPTION", "exception: %i\n", r->int_no);
 
@@ -52,6 +55,8 @@ void isr_handler(registers_t *r) {
 }
 
 void install_exception_isrs() {
+  /* Reserve vectors 0..31 for CPU exceptions; each stub normalizes the
+     stack layout before entering isr_handler. Gate 0x8E is ring-0 interrupt. */
   for (int i = 0; i < EXCEPTION_ISRS; i++) {
     idt_set_gate(i, (unsigned)isr_stub_table[i], 0x08, 0x8E);
   }

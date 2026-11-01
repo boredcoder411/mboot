@@ -1,3 +1,4 @@
+// PIT initialization for the scheduler timer.
 #pragma once
 
 #define PIT_CHANNEL0 0x40

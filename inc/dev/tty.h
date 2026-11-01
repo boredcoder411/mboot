@@ -1,3 +1,4 @@
+// Virtual terminal state and input/output interface.
 #pragma once
 
 #include <stddef.h>

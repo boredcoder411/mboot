@@ -1,3 +1,4 @@
+// Maintain virtual-terminal input and screen state and connect terminal operations to task file descriptors.
 #include "dev/tty.h"
 #include "dev/vga.h"
 #include "io.h"
@@ -49,12 +50,16 @@ static void tty_render(int tty_id) {
 }
 
 static void tty_put_cell(tty_t *tty, int x, int y, char c) {
+  /* Always update the terminal's backing cells; only the visible terminal
+     writes through to VGA immediately. Background output remains saved. */
   tty->cells[y * VGA_WIDTH + x] = (uint16_t)c | VGA_WHITE_ON_BLACK;
   if (tty == ttys[active_tty])
     vga_put_char(x, y, c);
 }
 
 static void tty_scroll(tty_t *tty) {
+  /* Shift each row upward, blank the final row and keep the cursor there.
+     Redraw only when this terminal currently owns the physical display. */
   for (int y = 1; y < VGA_HEIGHT; y++) {
     memcpy(&tty->cells[(y - 1) * VGA_WIDTH], &tty->cells[y * VGA_WIDTH],
            VGA_WIDTH * sizeof(uint16_t));
@@ -82,6 +87,8 @@ static void early_scroll(void) {
 }
 
 static void tty_early_write(char c) {
+  /* Before the terminal objects exist, write directly to VGA so early boot
+     diagnostics do not depend on allocation or the scheduler. */
   switch (c) {
   case '\n':
     early_x = 0;
@@ -116,6 +123,8 @@ static void tty_early_write(char c) {
   vga_move_cursor(early_x, early_y);
 }
 
+/* The circular input queue leaves one slot empty to distinguish full from
+   empty. Characters arriving when it is full are dropped. */
 static void tty_push_input(tty_t *tty, char c) {
   uint16_t next_head = (tty->input_head + 1) % TTY_INPUT_SIZE;
   if (next_head == tty->input_tail)
@@ -128,6 +137,8 @@ static int tty_has_input(tty_t *tty) {
   return tty->input_head != tty->input_tail;
 }
 
+/* Check for input with interrupts disabled before blocking, so a keyboard
+   interrupt cannot wake the task between the check and the sleep. */
 static char tty_pop_input(tty_t *tty) {
   for (;;) {
     CLI();
@@ -161,6 +172,8 @@ void tty_init(void) {
   tty_render(active_tty);
 }
 
+/* Every terminal retains its own screen buffer; switching redraws the
+   selected buffer instead of discarding the previous terminal's contents. */
 void tty_switch(int tty) {
   if (!tty_valid(tty) || tty == active_tty)
     return;
@@ -226,6 +239,8 @@ int tty_write_buf(int tty, const char *buf, size_t size) {
   return (int)size;
 }
 
+/* Reads are line-oriented: collect and echo editing keys until newline,
+   then return as much of the buffered line as the caller requested. */
 int tty_read(int tty_id, size_t size, void *dst) {
   if (!dst || !tty_valid(tty_id))
     return -1;
@@ -235,6 +250,8 @@ int tty_read(int tty_id, size_t size, void *dst) {
     return -1;
 
   if (tty->line_pos < tty->line_fill) {
+    /* A prior read may have consumed only part of the completed line. Keep
+       the rest for the next read rather than waiting for new keyboard input. */
     size_t take = size;
     if ((size_t)(tty->line_fill - tty->line_pos) < take)
       take = (size_t)(tty->line_fill - tty->line_pos);
@@ -271,6 +288,7 @@ int tty_read(int tty_id, size_t size, void *dst) {
     }
   }
 
+  /* Reuse the buffered-line path above now that a newline has completed it. */
   return tty_read(tty_id, size, dst);
 }
 

@@ -1,3 +1,4 @@
+// Enumerate PCI configuration space and discover device resources used by drivers.
 #include "dev/pci.h"
 #include "dev/serial.h"
 #include "io.h"
@@ -16,6 +17,8 @@ pci_device_info_t pci_device_table[] = {
 
 uint32_t pci_config_read_raw(uint8_t bus, uint8_t slot, uint8_t func,
                              uint8_t offset) {
+  /* Configuration mechanism 1 packs bus, slot, function and aligned offset
+     into the address port; the data port returns the selected 32-bit word. */
   uint32_t address = (1U << 31) | ((uint32_t)bus << 16) |
                      ((uint32_t)slot << 11) | ((uint32_t)func << 8) |
                      (offset & 0xFC);
@@ -31,6 +34,8 @@ uint16_t pci_config_read_word_raw(uint8_t bus, uint8_t device, uint8_t func,
 
 void pci_config_write_word_raw(uint8_t bus, uint8_t device, uint8_t func,
                                uint8_t offset, uint16_t value) {
+  /* Config I/O reads/writes aligned 32-bit words. Preserve the other half
+     when replacing the selected 16-bit field. */
   uint32_t aligned_offset = offset & 0xFC;
 
   uint32_t address = (1U << 31) | ((uint32_t)bus << 16) |
@@ -73,6 +78,8 @@ void pci_enable_busmaster(uint8_t bus, uint8_t dev, uint8_t func) {
   outl(0xCFC, (cmd | ((uint32_t)cmd << 16)));
 }
 
+/* BARs describe device register resources; their low bits encode whether
+   the resource is I/O space or memory space rather than part of the address. */
 void pci_read_bars(pci_device_desc_t *desc, uint32_t bars[6]) {
   bars[0] =
       pci_config_read_raw(desc->bus, desc->device, desc->function, PCI_BAR0);
@@ -122,12 +129,15 @@ const char *pci_lookup_device(uint16_t vendor_id, uint16_t device_id) {
   return NULL;
 }
 
+/* Probe buses, devices and functions through PCI configuration space, then
+   hand discovered device descriptions to the driver selection code. */
 void pci_enumerate() {
   for (uint8_t bus = 0; bus < 255; bus++) {
     for (uint8_t device = 0; device < 32; device++) {
       for (uint8_t func = 0; func < 8; func++) {
 
         uint16_t vendor = pci_config_read_word_raw(bus, device, func, 0x00);
+        /* An all-ones vendor ID means no function responded to this probe. */
         if (vendor == 0xFFFF)
           continue;
 
@@ -171,6 +181,8 @@ void pci_enumerate() {
         desc.io_base = pci_detect_iobase(&desc);
         desc.irq = pci_detect_irq(&desc);
 
+        /* Pass the discovered resources to the driver matcher; recognizing a
+           name for logging alone does not initialize a driver. */
         pci_handle_device(&desc);
       }
     }

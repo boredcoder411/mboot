@@ -1,3 +1,4 @@
+// Task states, saved context and scheduler/process interfaces.
 #pragma once
 
 #include "fd.h"
@@ -13,6 +14,8 @@ typedef enum {
   TASK_EXITED
 } task_state_t;
 
+/* ESP points to a saved interrupt-compatible frame and CR3 selects the
+   task's page directory. next links the circular round-robin task list. */
 typedef struct task_control_block {
   uint32_t esp;
   task_state_t state;
@@ -26,6 +29,8 @@ typedef struct task_control_block {
   struct task_control_block *next;
 } tcb_t;
 
+/* The loader supplies file bytes separately from the full in-memory size,
+   allowing the scheduler to zero the remainder of a loadable ELF segment. */
 typedef struct {
   uint32_t vaddr;
   uint32_t filesz;

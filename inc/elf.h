@@ -1,3 +1,4 @@
+// ELF32 structures and executable loader interface.
 #pragma once
 
 #include "io.h"

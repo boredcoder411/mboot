@@ -1,3 +1,4 @@
+// CMOS real-time clock interface.
 #pragma once
 
 #include <stdint.h>

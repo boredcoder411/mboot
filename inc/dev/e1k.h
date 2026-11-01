@@ -1,3 +1,4 @@
+// e1000 network controller interface.
 #pragma once
 
 #include "dev/nic.h"

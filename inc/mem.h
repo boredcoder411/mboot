@@ -1,3 +1,4 @@
+// E820 memory-map records and kernel heap allocation interface.
 #pragma once
 
 #include <stdbool.h>

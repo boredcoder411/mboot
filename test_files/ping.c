@@ -1,6 +1,9 @@
+// Build and send ICMP echo traffic through the raw socket interface.
 #include "libc.h"
 
 static int parse_ip(const char *s, uint8_t ip[4]) {
+  /* Accept exactly four decimal octets separated by dots. The final test
+     rejects any trailing text after the fourth octet. */
   for (int i = 0; i < 4; i++) {
     int v = 0;
     int digits = 0;
@@ -43,6 +46,8 @@ int main(int argc, char **argv) {
   printf("ping: pinging %d.%d.%d.%d\n", dst[0], dst[1], dst[2], dst[3]);
   const char *payload = "mboot-ping";
 
+  /* The kernel's raw-socket path constructs an ICMP echo request; recvfrom
+     waits for the reply routed back to this socket's ICMP identifier. */
   for (int seq = 1; seq <= 3; seq++) {
     int n = sendto(fd, payload, strlen(payload), 0, (struct sockaddr *)&dest,
                    sizeof(dest));

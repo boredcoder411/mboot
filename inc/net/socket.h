@@ -1,3 +1,4 @@
+// Socket operations and address definitions shared with the VFS.
 #pragma once
 
 #include <stddef.h>

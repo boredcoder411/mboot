@@ -1,3 +1,4 @@
+// Fork a Lua process with its standard descriptors connected to a UDP socket.
 #include "libc.h"
 
 static void spawn_remote_lua(int udp_fd) {
@@ -5,6 +6,8 @@ static void spawn_remote_lua(int udp_fd) {
   if (pid != 0)
     return;
 
+  /* In the child, route all three standard descriptors through the socket.
+     exec retains the descriptors, so Lua can use its normal stream APIs. */
   dup2(udp_fd, 0);
   dup2(udp_fd, 1);
   dup2(udp_fd, 2);
@@ -40,6 +43,7 @@ int main(int argc, char **argv) {
   printf("udp_lua: launching remote Lua child\n");
   spawn_remote_lua(udp_fd);
 
+  /* Keep the parent alive; this demo does not supervise or restart Lua. */
   for (;;) {
     for (volatile int i = 0; i < 100000; ++i)
       asm volatile("pause");

@@ -1,3 +1,4 @@
+// Serial-port output and kernel diagnostic formatting for the freestanding environment.
 #include "dev/serial.h"
 #include "io.h"
 #include <stdarg.h>
@@ -6,6 +7,8 @@
 static const char *level_str[] = {"INFO", "WARN", "ERROR", "DEBUG"};
 static const char *level_col[] = {ANSI_GREEN, ANSI_YELLOW, ANSI_RED, ANSI_BLUE};
 
+/* Configure the UART for kernel diagnostics before higher-level I/O is
+   available; writes below wait until the transmitter can accept a byte. */
 int init_serial(void) {
   outb(SERIAL_PORT + 1, 0x00); // Disable interrupts
   outb(SERIAL_PORT + 3, 0x80); // Enable DLAB
@@ -59,6 +62,8 @@ static void serial_print_str(const char *s) {
 
 static void serial_print_uint(unsigned int value, int base, int width,
                               bool pad_zero, bool uppercase) {
+  /* Recursion emits high-order digits before the remainder. Padding is sent
+     at the deepest call, before any digits, to satisfy the minimum width. */
   const char *digits = uppercase ? "0123456789ABCDEF" : "0123456789abcdef";
   char digit = digits[value % base];
 
@@ -87,6 +92,8 @@ static void serial_print_int(int value, int base, int width, bool pad_zero,
 
 static void serial_print_float(float f, int width, int precision,
                                bool pad_zero) {
+  /* This diagnostic formatter extracts fractional digits by repeated
+     multiplication; it is not a fully rounded printf implementation. */
   if (f < 0) {
     write_serial('-');
     f = -f;
@@ -134,6 +141,7 @@ void message_preamble(const char *module, log_level_t level) {
   write_serial(' ');
 }
 
+/* Minimal formatting for kernel logs, independent of the application libc. */
 void serial_printf(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);

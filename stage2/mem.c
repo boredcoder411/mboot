@@ -1,3 +1,4 @@
+// Kernel heap backed by a usable BIOS E820 region, with a bump pointer and reusable free blocks.
 #include "mem.h"
 #include "dev/serial.h"
 #include "utils.h"
@@ -76,6 +77,8 @@ void init_alloc(uint16_t count, e820_entry_t *entries) {
   uint64_t size = calculate_total_size(count, entries);
   INFO("MEM", "%f GB detected...", bytes_to_gb(size));
 
+  /* Select one region for the heap, rather than combining all usable E820
+     entries. Its bounds determine where the bump allocator may grow. */
   uint16_t biggest_index = 0;
 
   for (uint16_t i = 0; i < count; i++) {
@@ -107,6 +110,7 @@ void *memcpy(void *dst, const void *src, size_t n) {
   return dst;
 }
 
+/* First-fit search removes the selected block from the free list. */
 block_header_t *find_free_block_and_remove(uint32_t size) {
   block_header_t *prev = NULL;
   block_header_t *cur = free_list_head;
@@ -128,6 +132,8 @@ block_header_t *find_free_block_and_remove(uint32_t size) {
   return NULL;
 }
 
+/* Return a large remainder to the address-ordered free list only when it
+   can hold another header and a useful payload. */
 void try_split_block(block_header_t *block, uint32_t want_size) {
   uintptr_t hdr_size = (uintptr_t)sizeof(block_header_t);
   if (block->size <= want_size + hdr_size + 16) {
@@ -172,6 +178,8 @@ void *kmalloc(uint32_t bytes) {
     bump_next = free_ram;
   }
 
+  /* Reuse freed storage before extending the heap. Both paths zero the
+     returned payload, which several callers rely on for initial state. */
   block_header_t *found = find_free_block_and_remove((uint32_t)want_size);
   if (found) {
     try_split_block(found, (uint32_t)want_size);
@@ -202,6 +210,7 @@ void *kmalloc(uint32_t bytes) {
   return payload;
 }
 
+/* Coalescing joins physically adjacent free blocks, reducing fragmentation. */
 int try_coalesce_adjacent(block_header_t *a, block_header_t *b) {
   uintptr_t a_end = (uintptr_t)a + sizeof(block_header_t) + a->size;
   if (a_end == (uintptr_t)b) {
@@ -231,6 +240,7 @@ void kfree(void *loc) {
   block->free = 1;
   block->next = NULL;
 
+  /* Keep free blocks ordered by address so neighbours can be coalesced. */
   block_header_t *prev = NULL;
   block_header_t *cur = free_list_head;
   while (cur && (uintptr_t)cur < (uintptr_t)block) {

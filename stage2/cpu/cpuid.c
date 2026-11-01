@@ -1,3 +1,4 @@
+// Collect processor identification data for reporting through the kernel interfaces.
 #include "cpu/cpuid.h"
 #include "dev/serial.h"
 #include "mem.h"
@@ -12,6 +13,8 @@ static char cpuinfo_buf[CPUINFO_BUF_SIZE];
 static size_t cpuinfo_len;
 static int initialized;
 
+/* Older x86 processors may not support CPUID; test whether the ID flag in
+   EFLAGS can be changed before executing the instruction. */
 static int cpuid_supported(void) {
   uint32_t before;
   uint32_t after;
@@ -35,6 +38,7 @@ static int cpuid_supported(void) {
 
 static void cpuid_leaf(uint32_t leaf, uint32_t subleaf, uint32_t *a,
                        uint32_t *b, uint32_t *c, uint32_t *d) {
+  /* EAX and ECX select the leaf and subleaf; CPUID returns four words. */
   asm volatile("cpuid"
                : "=a"(*a), "=b"(*b), "=c"(*c), "=d"(*d)
                : "a"(leaf), "c"(subleaf));
@@ -96,6 +100,7 @@ static void append_flag(uint32_t bits, uint32_t mask, const char *name,
   *first = false;
 }
 
+/* Build the text once so /dev/cpuinfo can expose it through normal reads. */
 static void build_cpuinfo_text(void) {
   bool first = true;
 
@@ -183,6 +188,8 @@ void cpuid_init(void) {
 
   cpu.supported = 1;
 
+  /* Leaf 0 gives the highest basic leaf and a 12-byte vendor string in the
+     unusual register order EBX, EDX, ECX. Check limits before later leaves. */
   cpuid_leaf(0, 0, &a, &b, &c, &d);
   cpu.max_leaf = a;
   memcpy(cpu.vendor, &b, 4);
@@ -199,6 +206,8 @@ void cpuid_init(void) {
     cpu.type = (a >> 12) & 0x3;
     cpu.ext_model = (a >> 16) & 0xF;
     cpu.ext_family = (a >> 20) & 0xFF;
+    /* Extended family/model fields only contribute for specific base
+       families, as defined by the CPUID encoding. */
     cpu.family =
         base_family == 0xF ? base_family + cpu.ext_family : base_family;
     cpu.model = (base_family == 0x6 || base_family == 0xF)
@@ -214,6 +223,8 @@ void cpuid_init(void) {
   cpuid_leaf(0x80000000U, 0, &a, &b, &c, &d);
   cpu.max_ext_leaf = a;
 
+  /* Three extended leaves provide consecutive 16-byte chunks of the brand
+     string. Address-width and extended feature leaves are optional too. */
   if (cpu.max_ext_leaf >= 0x80000004U) {
     uint32_t *brand = (uint32_t *)cpu.brand;
     cpuid_leaf(0x80000002U, 0, &brand[0], &brand[1], &brand[2], &brand[3]);

@@ -1,7 +1,9 @@
+; Initial flat protected-mode segment descriptors used during the BIOS-to-kernel transition.
 gdt_start:
 gdt_null:
   dq 0x0
 
+; Flat 4 GiB code segment: executable/readable, present, ring 0.
 gdt_code:
   dw 0xFFFF
   dw 0x0000
@@ -10,6 +12,7 @@ gdt_code:
   db 0xCF
   db 0x00
 
+; Flat 4 GiB data segment: writable, present, ring 0.
 gdt_data:
   dw 0xFFFF
   dw 0x0000

@@ -1,3 +1,4 @@
+// Freestanding memory, string, byte-order and interrupt helpers.
 #pragma once
 
 #include <stdbool.h>

@@ -1,3 +1,4 @@
+// Packed MBR partition structures read from disk.
 #pragma once
 
 #include <stdint.h>

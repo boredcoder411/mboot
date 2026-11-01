@@ -1,3 +1,4 @@
+// Per-task descriptor table mapping local descriptors to VFS handles.
 #pragma once
 
 #define MAX_FDS_PER_PROCESS 16

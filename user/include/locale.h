@@ -1,3 +1,4 @@
+// Locale constants and the limited locale interface.
 #pragma once
 
 #define LC_ALL 0

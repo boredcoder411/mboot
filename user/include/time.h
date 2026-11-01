@@ -1,3 +1,4 @@
+// Time types and declarations; availability is limited by the runtime.
 #pragma once
 
 #include <stddef.h>

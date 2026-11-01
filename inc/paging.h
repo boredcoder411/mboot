@@ -1,3 +1,4 @@
+// Page flags and page-directory operations; PAGE_USER alone does not isolate ring-0 tasks.
 #pragma once
 
 #include <stdbool.h>

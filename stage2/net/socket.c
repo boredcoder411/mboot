@@ -1,3 +1,4 @@
+// Socket-facing network operations and queues exposed through the VFS descriptor layer.
 #include "net/socket.h"
 #include "dev/serial.h"
 #include "mem.h"
@@ -37,6 +38,8 @@ typedef struct {
 static socket_t sockets[SOCKET_MAX];
 
 static int socket_index_from_handle(int handle) {
+  /* Socket handles occupy their own negative range, separate from disk file
+     handles and the other virtual-device ranges used by the VFS. */
   int index = SOCKET_HANDLE_BASE - handle;
   if (index < 0 || index >= SOCKET_MAX)
     return -1;
@@ -85,6 +88,8 @@ static void socket_flush_output(socket_t *sock) {
 
 void socket_init(void) { memset(sockets, 0, sizeof(sockets)); }
 
+/* Allocate a socket backend object; callers attach its handle to a per-task
+   descriptor separately through the VFS. Supported families/types are limited. */
 int socket_create(int domain, int type, int protocol) {
   if (domain != AF_INET)
     return -1;
@@ -125,6 +130,8 @@ int socket_dup(int handle) {
   return 0;
 }
 
+/* Handles can be shared by fork or dup2, so close drops a reference before
+   releasing the socket when its last reference disappears. */
 int socket_close(int handle) {
   socket_t *sock = socket_from_handle(handle);
   if (!sock)
@@ -136,6 +143,7 @@ int socket_close(int handle) {
   return 0;
 }
 
+/* Bind associates a socket with a local UDP port used for packet delivery. */
 int socket_bind(int handle, const struct sockaddr *addr, socklen_t addrlen) {
   socket_t *sock = socket_from_handle(handle);
   if (!sock || !sockaddr_in_valid(addr, addrlen))
@@ -156,6 +164,8 @@ int socket_bind(int handle, const struct sockaddr *addr, socklen_t addrlen) {
 }
 
 int socket_read(int handle, void *buf, size_t len) {
+  /* A socket used as a stream retains unread bytes from one datagram. If no
+     data is queued, sleep on the local port until UDP wakes its waiters. */
   socket_t *sock = socket_from_handle(handle);
   if (!sock || !sock->bound || !buf || len > 65535)
     return -1;
@@ -198,6 +208,9 @@ int socket_write(int handle, const void *buf, size_t len) {
                : -1;
   }
 
+  /* Before receiving a datagram there is no peer to send to. Buffer output
+     for later, up to the fixed capacity; excess bytes are not retained even
+     though this implementation reports the requested length. */
   size_t room = SOCKET_OUT_SIZE - sock->out_len;
   size_t take = len < room ? len : room;
   memcpy(sock->outbuf + sock->out_len, buf, take);
@@ -221,6 +234,9 @@ int socket_sendto(int handle, const void *buf, size_t len, int flags,
   };
 
   if (sock->is_raw) {
+    /* The raw interface is specialized for ping: it generates an ICMP echo
+       using the socket identifier and sequence rather than sending buf as a
+       general arbitrary IP payload. */
     uint8_t src_ip[4];
     if (!ipv4_get_address(src_ip))
       return -1;
@@ -233,6 +249,7 @@ int socket_sendto(int handle, const void *buf, size_t len, int flags,
     return (int)len;
   }
 
+  /* Unbound sends use a fixed source port, not a dynamic port allocator. */
   uint16_t src_port = sock->bound ? sock->local_port : 49152;
   uint16_t dst_port = ntohs(in->sin_port);
   if (udp_send_local(src_port, dst_ip, dst_port, buf, (uint16_t)len) < 0)
@@ -296,6 +313,8 @@ int socket_recvfrom(int handle, void *buf, size_t len, int flags,
 
 int socket_icmp_rx(const uint8_t src_ip[4], const void *icmp_data,
                    uint16_t icmp_len) {
+  /* Match echo replies to the raw socket's identifier and wake readers on
+     the socket object. Only one reply buffer is retained per socket. */
   if (!icmp_data || icmp_len < sizeof(icmp_echo_hdr))
     return -1;
 

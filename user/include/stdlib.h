@@ -1,3 +1,4 @@
+// Allocation, conversion and process utility declarations.
 #pragma once
 
 #include <stddef.h>

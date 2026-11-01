@@ -1,3 +1,4 @@
+// Error codes and the shared errno variable used by this runtime.
 #pragma once
 
 extern int errno;

@@ -1,3 +1,4 @@
+// Saved execution context and non-local jump declarations for i386.
 #pragma once
 
 typedef signed long jmp_buf[6];

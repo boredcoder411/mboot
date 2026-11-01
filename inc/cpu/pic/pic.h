@@ -1,3 +1,4 @@
+// Legacy PIC control, masking and end-of-interrupt operations.
 #pragma once
 
 #include <stdbool.h>

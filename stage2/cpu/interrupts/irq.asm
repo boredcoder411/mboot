@@ -1,3 +1,4 @@
+; Hardware IRQ stubs build a common frame; the dispatcher can return a different task stack.
 ; same as isr.asm but with irqs and no error codes
 [bits 32]
 
@@ -55,6 +56,8 @@ irq_stub 13
 irq_stub 14
 irq_stub 15
 
+; Save the interrupted state, then restore the frame selected by C. Timer
+; interrupts can select a different task by returning its stack pointer.
 irq_common:
     pusha_c
     mov ax, 0x10

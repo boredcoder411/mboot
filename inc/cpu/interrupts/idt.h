@@ -1,3 +1,4 @@
+// Interrupt descriptor structures and IDT installation.
 #pragma once
 
 #include <stdint.h>

@@ -1,3 +1,4 @@
+// Fixed-width integer and pointer-sized types for i386.
 #pragma once
 
 typedef signed char int8_t;

@@ -1,3 +1,4 @@
+// Kernel initialization order from interrupt setup through scheduling /init.elf. Boot-time E820 data is supplied by stage1.
 #include "cpu/cpuid.h"
 #include "cpu/gdt.h"
 #include "cpu/interrupts/idt.h"
@@ -30,6 +31,8 @@ int free_calls;
 #endif
 
 void loader_start(void) {
+  /* Keep device IRQs masked while installing handlers and initializing the
+     subsystems they use; the timer is unmasked after scheduler setup. */
   for (int i = 0; i < IRQs; ++i) {
     pic_set_mask(i);
   }
@@ -43,9 +46,12 @@ void loader_start(void) {
   init_serial();
   cpuid_init();
 
+  /* Stage1 leaves the count and table at these fixed physical addresses. */
   e820_entry_t *mem_map = E820_TABLE_ADDR;
   uint16_t entry_count = *E820_ENTRY_COUNT_ADDR;
   init_alloc(entry_count, mem_map);
+  /* Heap initialization must precede TTY and page-table allocations. The
+     initial page directory identity maps addresses used by the kernel. */
   tty_init();
   paging_init();
 
@@ -59,6 +65,8 @@ void loader_start(void) {
   asm("mov %%esp, %0" : "=r"(esp));
   tss_set_stack(esp, GDT_DATA_SEG);
 
+  /* Once devices and scheduling are ready, register FAT16 with the VFS so
+     spawn_elf can read the first application from the disk image. */
   fat16_init();
 
   char *argv[] = {"init", NULL};
@@ -71,6 +79,8 @@ void loader_start(void) {
     }
   }
 
+  /* Enable hardware interrupts only after init has been placed on the task
+     list. The idle context then halts until an interrupt makes work possible. */
   STI();
   INFO("MAIN", "Init scheduled. Entering idle loop.");
   while (1) {

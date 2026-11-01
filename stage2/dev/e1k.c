@@ -1,3 +1,4 @@
+// Intel e1000 PCI network driver: configure device registers and DMA descriptor rings for packet transmission and reception.
 #include "dev/e1k.h"
 #include "cpu/interrupts/irq.h"
 #include "cpu/pic/pic.h"
@@ -100,6 +101,8 @@ static inline void e1k_mmio_post(void) {
   asm volatile("" ::: "memory");
 }
 
+/* The NIC reads descriptors and packet buffers via DMA. Align the ring to
+   the device requirement and initially mark each transmit descriptor free. */
 void e1k_tx_init(void) {
   uintptr_t ring_addr =
       (uintptr_t)kmalloc(sizeof(e1k_tx_desc_t) * NUM_TX_DESC + 128);
@@ -149,7 +152,9 @@ void e1k_rx_init(void) {
   uintptr_t aligned_ring = align_up_uintptr(ring_addr, 128);
   rx_ring = (e1k_rx_desc_t *)aligned_ring;
 
-  // Allocate RX buffers
+  // Give every descriptor a persistent buffer the NIC can fill via DMA.
+  // The driver and device exchange ownership through descriptor status bits
+  // and the head/tail registers rather than copying packets through ports.
   rx_bufs = (uint8_t (*)[RX_BUF_SIZE])kmalloc(sizeof(uint8_t) * NUM_RX_DESC *
                                               RX_BUF_SIZE);
 
@@ -236,11 +241,16 @@ static void e1k_process_packet(uint8_t *data, uint16_t len) {
   eth_process_packet(data, len);
 }
 
+/* Consume completed receive descriptors until hardware has no more ready.
+   The Ethernet layer dispatches each complete, error-free packet. */
 void e1k_drain_rx(void) {
   int processed = 0;
   while (1) {
     e1k_rx_desc_t *desc = &rx_ring[rx_tail];
 
+    /* Observe the NIC's completed write before reading descriptor contents.
+       DD indicates ownership has returned to software; EOP indicates that
+       this descriptor ends a packet. Multi-descriptor assembly is absent. */
     asm volatile("lfence" ::: "memory");
     uint8_t status = desc->status;
 
@@ -284,6 +294,9 @@ void e1k_drain_rx(void) {
 
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 void handler(registers_t *r) {
+  /* Reading ICR retrieves the interrupt causes. RX work drains completed
+     descriptors; link and overrun causes are logged before re-enabling the
+     configured interrupt mask. */
   uint32_t icr = e1k_read(E1K_REG_ICR);
   INFO("E1K", "Interrupt ICR=0x%08x", icr);
 
@@ -323,6 +336,8 @@ int e1k_send(void *frame, size_t len) {
   }
 
   uint32_t hw_tdt = e1k_read(E1K_TDT);
+  /* The tail chooses the next TX slot. DD must be set before reusing it;
+     after submission the driver waits for DD again before returning. */
   uint32_t cur = hw_tdt & (NUM_TX_DESC - 1);
 
   e1k_tx_desc_t *desc = &tx_ring[cur];
@@ -339,6 +354,8 @@ int e1k_send(void *frame, size_t len) {
     asm volatile("pause");
   }
 
+  /* Copy into the persistent DMA buffer before advancing the hardware tail;
+     the caller may release its original frame after transmission completes. */
   memcpy(tx_bufs[cur], frame, len);
 
   desc->length = (uint16_t)len;

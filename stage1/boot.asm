@@ -1,9 +1,11 @@
+; BIOS boot sector: collect E820 memory entries, read the kernel and enter protected mode. The disk image layout and link address must agree with this loader.
 [org 0x7c00]
 
 LOADER_OFFSET equ 0x10000
 LOADER_SEG equ 0x1000
 LOADER_OFF equ 0x0000
 
+; BIOS passes the boot drive in DL; retain it for the sector read.
 mov [BOOT_DISK], dl
 
 mov bp, 0x7c00
@@ -16,6 +18,8 @@ int 0x10
 call load_kernel
 jmp bootsector_memory
 
+; BIOS writes 24-byte E820 entries at 0x71000 and the count at 0x70ff0.
+; EBX is the continuation token returned by BIOS.
 detect_memory:
     E820_SEG equ 0x7000
     E820_MAP_OFF equ 0x1000
@@ -38,6 +42,8 @@ detect_memory:
     cmp eax, 0x534D4150     ; Check for 'SMAP' signature on return
     jne .error
 
+    ; This implementation checks the continuation token before counting the
+    ; final returned entry, so the stored count can omit that last entry.
     test ebx, ebx           ; If EBX is 0, we are done
     jz .done
 
@@ -67,6 +73,7 @@ load_kernel:
 	ret
 
 [bits 16]
+; Enable A20, load the flat GDT, set CR0.PE and use a far jump to reload CS.
 switch_to_pm:
 	cli
 	in al, 0x92
@@ -81,6 +88,8 @@ switch_to_pm:
 	jmp CODE_SEG:init_pm
 
 [bits 16]
+; BIOS CHS read begins at sector 2, immediately after the boot sector.
+; This simple path does not check the BIOS carry flag after the read.
 disk_load:
 	pusha
 
@@ -107,6 +116,8 @@ bootsector_memory:
 	jmp $
 
 [bits 32]
+; Load the data selector into each segment register and establish a stack
+; before calling the kernel at its linked address, 0x10000.
 init_pm:
 	mov ax, DATA_SEG
 

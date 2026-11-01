@@ -1,3 +1,4 @@
+// Stream and formatted I/O declarations backed by the custom runtime.
 #pragma once
 
 #include <stdarg.h>

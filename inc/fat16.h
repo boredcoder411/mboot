@@ -1,3 +1,4 @@
+// FAT16 structures and read-only filesystem operations.
 #pragma once
 
 #include <stdbool.h>

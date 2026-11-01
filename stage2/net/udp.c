@@ -1,3 +1,4 @@
+// UDP datagram delivery and transmission on top of IPv4.
 #include "net/udp.h"
 #include "dev/serial.h"
 #include "mem.h"
@@ -35,6 +36,8 @@ static udp_binding_t udp_bindings[UDP_MAX_BINDINGS];
 static udp_user_server_t *udp_servers[UDP_MAX_SERVERS];
 static uint16_t udp_tx_identification = 1;
 
+/* UDP checksums cover an IPv4 pseudo-header as well as the UDP header and
+   payload, binding the datagram to its source and destination addresses. */
 static uint16_t udp_checksum(const uint8_t src_ip[4], const uint8_t dst_ip[4],
                              const void *segment, uint16_t segment_len) {
   const uint8_t *bytes = (const uint8_t *)segment;
@@ -109,6 +112,8 @@ int udp_server_bind(uint16_t port) {
   return -1;
 }
 
+/* A bounded ring stores datagrams until userspace reads them. A full queue
+   drops the new datagram; a successful enqueue wakes tasks waiting on port. */
 static void udp_server_enqueue(udp_user_server_t *server,
                                const uint8_t src_ip[4], uint16_t src_port,
                                const uint8_t *payload, uint16_t payload_len) {
@@ -132,6 +137,7 @@ static void udp_server_enqueue(udp_user_server_t *server,
   scheduler_wake((void *)(uintptr_t)server->port);
 }
 
+/* Remove one datagram and copy at most max_len bytes to the caller. */
 int udp_server_recv(uint16_t port, uint8_t src_ip_out[4],
                     uint16_t *src_port_out, uint8_t *payload_out,
                     uint16_t max_len, uint16_t *payload_len_out) {
@@ -150,6 +156,8 @@ int udp_server_recv(uint16_t port, uint8_t src_ip_out[4],
   *payload_len_out = take;
 
   server->head = (server->head + 1) % UDP_MAX_QUEUE;
+  /* If max_len was smaller than the datagram, the uncopied tail is lost:
+     dequeue removes the entire datagram, preserving message boundaries. */
   server->count--;
   return 0;
 }
@@ -195,6 +203,8 @@ int udp_bind(uint16_t port, udp_handler_t handler) {
   return -1;
 }
 
+/* Resolve the destination directly on the local subnet, or resolve the
+   gateway for remote addresses, before constructing the UDP/IP packet. */
 int udp_send(const uint8_t src_ip[4], const uint8_t dst_ip[4],
              const uint8_t next_hop_mac[6], uint16_t src_port,
              uint16_t dst_port, const void *payload, uint16_t payload_len) {
@@ -241,6 +251,8 @@ int udp_send(const uint8_t src_ip[4], const uint8_t dst_ip[4],
   }
 
   uint16_t checksum = udp_checksum(src_ip, dst_ip, segment, segment_len);
+  /* In IPv4 UDP, an on-wire checksum of zero means no checksum. Encode a
+     computed zero as 0xFFFF so the receiver still validates it. */
   udp->dgram_cksum = htons(checksum == 0 ? 0xFFFF : checksum);
 
   int result = ipv4_send_packet(src_ip, dst_ip, next_hop_mac, IPV4_PROTOCOL_UDP,
@@ -270,6 +282,8 @@ void udp_process_packet(uint8_t *frame, uint16_t frame_len, ipv4_hdr *ipv4,
     return;
   }
 
+  /* A zero checksum is permitted for IPv4 UDP. Otherwise validate the whole
+     segment with its checksum included; a correct one's-complement sum is 0. */
   if (udp->dgram_cksum != 0) {
     uint16_t received_checksum = ntohs(udp->dgram_cksum);
     udp->dgram_cksum = 0;
@@ -297,6 +311,8 @@ void udp_process_packet(uint8_t *frame, uint16_t frame_len, ipv4_hdr *ipv4,
        ipv4->dst_ip[0], ipv4->dst_ip[1], ipv4->dst_ip[2], ipv4->dst_ip[3],
        dst_port, payload_len);
 
+  /* A userspace queue takes precedence over an in-kernel callback for the
+     same port. Payload storage is copied into the queue before returning. */
   udp_user_server_t *server = udp_find_server(dst_port);
   if (server != NULL) {
     udp_server_enqueue(server, ipv4->src_ip, src_port, payload, payload_len);

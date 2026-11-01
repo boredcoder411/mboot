@@ -1,3 +1,4 @@
+// Keyboard initialization and input interface.
 #pragma once
 
 #include "io.h"

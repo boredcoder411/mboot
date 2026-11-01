@@ -1,3 +1,4 @@
+// VGA text display and cursor interface.
 #pragma once
 
 #include <stdint.h>

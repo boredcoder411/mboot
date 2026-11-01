@@ -1,3 +1,4 @@
+// Resolve IPv4 addresses to Ethernet addresses and handle ARP traffic.
 #include "net/arp.h"
 #include "dev/e1k.h"
 #include "dev/serial.h"
@@ -6,6 +7,7 @@
 #include "net/ipv4.h"
 #include "utils.h"
 
+/* This is a single-entry cache: learning a new sender replaces the old one. */
 static uint8_t arp_cached_ip[4];
 static uint8_t arp_cached_mac[6];
 static int arp_cache_valid = 0;
@@ -40,6 +42,8 @@ void arp_process_packet(uint8_t *data, uint16_t len) {
        arp->sender_ip[2], arp->sender_ip[3], arp->target_ip[0],
        arp->target_ip[1], arp->target_ip[2], arp->target_ip[3]);
 
+  /* Learn from either an ARP request or reply. The cache holds only the most
+     recently seen sender, so unrelated traffic can evict an earlier mapping. */
   arp_update_cache(arp->sender_ip, arp->sender_mac);
 
   if (ntohs(arp->opcode) == 1) {
@@ -59,6 +63,7 @@ void arp_send_request(uint8_t src_ip[4], uint8_t target_ip[4]) {
   memset(frame, 0, frame_len);
 
   eth_hdr *eth = (eth_hdr *)frame;
+  /* Broadcast the request because the target hardware address is unknown. */
   memset(eth->dst, 0xFF, 6);
   e1k_get_mac(eth->src);
   eth->ethertype = htons(0x0806);
@@ -139,8 +144,12 @@ int arp_resolve(const uint8_t target_ip[4], uint8_t out_mac[6]) {
   if (!ipv4_get_address(src_ip))
     return 0;
 
+  /* Broadcast a request, then poll received packets for the reply. This is
+     bounded but ties up the caller while resolution is in progress. */
   arp_send_request(src_ip, (uint8_t *)target_ip);
 
+  /* Poll the NIC while waiting so a received ARP reply can update the cache;
+     this loop has a finite number of attempts, rather than a real clock. */
   for (int i = 0; i < 8; ++i) {
     for (uint32_t j = 0; j < 1000000; ++j) {
       if (arp_try_get_mac((uint8_t *)target_ip, out_mac))

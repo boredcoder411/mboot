@@ -1,3 +1,4 @@
+// IPv4 packet construction, routing and receive dispatch for the supported protocols.
 #include "net/ipv4.h"
 #include "dev/e1k.h"
 #include "dev/serial.h"
@@ -58,6 +59,8 @@ int ipv4_is_local_address(const uint8_t ip[4]) {
 }
 
 int ipv4_on_local_network(const uint8_t ip[4]) {
+  /* A matching network prefix means the destination is reached directly;
+     otherwise callers normally resolve the configured gateway instead. */
   if (!ipv4_local_ip_valid)
     return 0;
 
@@ -69,6 +72,8 @@ int ipv4_on_local_network(const uint8_t ip[4]) {
   return 1;
 }
 
+/* The Internet checksum adds network-order 16-bit words with end-around
+   carry, then complements the result; an odd final byte is padded with zero. */
 uint16_t ipv4_checksum(const void *data, size_t len) {
   const uint8_t *bytes = (const uint8_t *)data;
   uint32_t sum = 0;
@@ -97,6 +102,8 @@ int ipv4_send_packet(const uint8_t src_ip[4], const uint8_t dst_ip[4],
   size_t packet_len = sizeof(eth_hdr) + sizeof(ipv4_hdr) + payload_len;
   size_t frame_len = packet_len;
 
+  /* Ethernet frames need at least 60 bytes before the hardware-added FCS.
+     Padding is outside the IP total length and is zeroed with the frame. */
   if (frame_len < 60)
     frame_len = 60;
 
@@ -109,6 +116,7 @@ int ipv4_send_packet(const uint8_t src_ip[4], const uint8_t dst_ip[4],
   eth->ethertype = htons(0x0800);
 
   ipv4_hdr *ipv4 = (ipv4_hdr *)(frame + sizeof(eth_hdr));
+  /* IPv4, five 32-bit header words, no options, and do-not-fragment. */
   ipv4->version_ihl = 0x45;
   ipv4->dscp_ecn = 0;
   ipv4->total_length = htons(sizeof(ipv4_hdr) + payload_len);
@@ -150,6 +158,8 @@ void ipv4_process_packet(uint8_t *frame, uint16_t frame_len, uint8_t *data,
     return;
   }
 
+  /* Temporarily clear the checksum field to recompute the header checksum,
+     then restore the received value before handing the packet to a protocol. */
   uint16_t header_checksum = ipv4->header_checksum;
   ipv4->header_checksum = 0;
   uint16_t computed_checksum = htons(ipv4_checksum(ipv4, ihl));
@@ -160,6 +170,7 @@ void ipv4_process_packet(uint8_t *frame, uint16_t frame_len, uint8_t *data,
     return;
   }
 
+  /* There is no fragment reassembly in this stack, so discard fragments. */
   uint16_t fragment_field = ntohs(ipv4->flags_fragment_offset);
   if ((fragment_field & 0x3FFF) != 0 || (fragment_field & 0x2000) != 0) {
     INFO("IPV4", "Dropping fragmented IPv4 packet");
